@@ -10,8 +10,8 @@
 | :--- | :--- | :---: | :---: | :---: |
 | **01** | **Horizontal Scaling & Load Balancing** | ✅ **Hoàn thành** | [docs/01-scaling-and-load-balancing.md](docs/01-scaling-and-load-balancing.md) | [labs/module-01-load-balancing/](labs/module-01-load-balancing/) |
 | **02** | **Caching Strategies & Thundering Herd Defense** | ✅ **Hoàn thành** | [docs/02-caching-strategies.md](docs/02-caching-strategies.md) | [labs/module-02-caching-patterns/](labs/module-02-caching-patterns/) |
-| **03** | **Distributed Rate Limiting (Token Bucket / Sliding Window)** | 🟢 **Đang học** | [docs/03-rate-limiting.md](docs/03-rate-limiting.md) | [labs/module-03-rate-limiter/](labs/module-03-rate-limiter/) |
-| **04** | **Database Replication, Read/Write Splitting & Lag** | ⚪ Chờ | [docs/04-db-replication.md](docs/04-db-replication.md) | `labs/module-04-db-replication/` |
+| **03** | **Distributed Rate Limiting (Token Bucket / Sliding Window)** | ✅ **Hoàn thành** | [docs/03-rate-limiting.md](docs/03-rate-limiting.md) | [labs/module-03-rate-limiter/](labs/module-03-rate-limiter/) |
+| **04** | **Database Replication, Read/Write Splitting & Lag** | 🟢 **Đang học** | [docs/04-db-replication.md](docs/04-db-replication.md) | [labs/module-04-db-replication/](labs/module-04-db-replication/) |
 | **05** | **Database Sharding, Consistent Hashing & Snowflake ID** | ⚪ Chờ | [docs/05-db-sharding-consistent-hashing.md](docs/05-db-sharding-consistent-hashing.md) | `labs/module-05-db-sharding/` |
 | **06** | **CAP/PACELC, Distributed Locks & Redlock** | ⚪ Chờ | [docs/06-cap-distributed-locks.md](docs/06-cap-distributed-locks.md) | `labs/module-06-distributed-lock/` |
 | **07** | **Message Queues, Dead Letter Queue & Idempotency** | ⚪ Chờ | [docs/07-message-queues-idempotency.md](docs/07-message-queues-idempotency.md) | `labs/module-07-message-queues/` |
