@@ -1,0 +1,25 @@
+{
+  "name": "lab-02-caching-patterns",
+  "version": "1.0.0",
+  "description": "Module 02: Caching Deep-Dive, Thundering Herd Defense & Cache Patterns",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "ts-node src/server.ts",
+    "start:prod": "node dist/server.js",
+    "benchmark:no-cache": "node benchmark-stampede.js --mode=none --label=\"No Cache (Direct to DB)\"",
+    "benchmark:naive": "node benchmark-stampede.js --mode=naive --label=\"Naive Cache-Aside (Thundering Herd Vulnerable)\"",
+    "benchmark:singleflight": "node benchmark-stampede.js --mode=singleflight --label=\"Singleflight Pattern (Thundering Herd Protected)\"",
+    "benchmark:penetration": "node benchmark-stampede.js --mode=penetration --label=\"Cache Penetration Test (Non-existent IDs)\""
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.13.5",
+    "autocannon": "^7.15.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.3"
+  }
+}
