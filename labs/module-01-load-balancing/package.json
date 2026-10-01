@@ -1,0 +1,33 @@
+{
+  "name": "lab-01-load-balancing",
+  "version": "1.0.0",
+  "description": "Module 01: Horizontal Scaling & Load Balancing Hands-on Lab",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "start:app1": "cross-env PORT=3001 INSTANCE_ID=app-node-1 ts-node src/server.ts",
+    "start:app2": "cross-env PORT=3002 INSTANCE_ID=app-node-2 ts-node src/server.ts",
+    "start:app3": "cross-env PORT=3003 INSTANCE_ID=app-node-3 ts-node src/server.ts",
+    "start:proxy": "cross-env PORT=8080 ts-node src/local-proxy.ts",
+    "start:cluster": "concurrently --kill-others -n \"node1,node2,node3,proxy\" -c \"cyan,green,yellow,magenta\" \"npm run start:app1\" \"npm run start:app2\" \"npm run start:app3\" \"npm run start:proxy\"",
+    "benchmark": "node benchmark.js",
+    "benchmark:single": "node benchmark.js --target=http://localhost:3001 --label=\"Single Instance (Node 1)\"",
+    "benchmark:cluster": "node benchmark.js --target=http://localhost:8080 --label=\"Load Balanced Cluster (3 Nodes)\"",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "http-proxy": "^1.18.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/http-proxy": "^1.17.16",
+    "@types/node": "^22.13.5",
+    "autocannon": "^7.15.0",
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.3"
+  }
+}

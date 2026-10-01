@@ -1,0 +1,22 @@
+{
+  "name": "system-design-master",
+  "version": "1.0.0",
+  "description": "System Design Master: Comprehensive theory and practical hands-on labs with Node.js/TypeScript & Docker",
+  "private": true,
+  "scripts": {
+    "lab1:install": "cd labs/module-01-load-balancing && npm install",
+    "lab1:start": "cd labs/module-01-load-balancing && npm run start:cluster",
+    "lab1:test": "cd labs/module-01-load-balancing && npm run benchmark"
+  },
+  "keywords": [
+    "system-design",
+    "distributed-systems",
+    "architecture",
+    "load-balancing",
+    "caching",
+    "rate-limiting",
+    "sharding"
+  ],
+  "author": "",
+  "license": "MIT"
+}
