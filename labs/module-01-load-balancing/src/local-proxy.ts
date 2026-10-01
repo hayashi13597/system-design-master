@@ -17,8 +17,17 @@ const BACKENDS: BackendServer[] = [
 const PROXY_PORT = parseInt(process.env.PORT || '8080', 10);
 let currentIndex = 0;
 
-// Tạo reverse proxy instance
+// Connection pooling để tái sử dụng TCP socket giữa Proxy và Backend
+const keepAliveAgent = new http.Agent({
+  keepAlive: true,
+  maxSockets: 500,
+  maxFreeSockets: 100,
+  timeout: 5000
+});
+
+// Tạo reverse proxy instance với TCP Connection Pool
 const proxy = httpProxy.createProxyServer({
+  agent: keepAliveAgent,
   proxyTimeout: 3000,
   timeout: 3000
 });

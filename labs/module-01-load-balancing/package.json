@@ -11,8 +11,9 @@
     "start:proxy": "cross-env PORT=8080 ts-node src/local-proxy.ts",
     "start:cluster": "concurrently --kill-others -n \"node1,node2,node3,proxy\" -c \"cyan,green,yellow,magenta\" \"npm run start:app1\" \"npm run start:app2\" \"npm run start:app3\" \"npm run start:proxy\"",
     "benchmark": "node benchmark.js",
-    "benchmark:single": "node benchmark.js --target=http://localhost:3001 --label=\"Single Instance (Node 1)\"",
-    "benchmark:cluster": "node benchmark.js --target=http://localhost:8080 --label=\"Load Balanced Cluster (3 Nodes)\"",
+    "benchmark:single": "node benchmark.js --target=http://localhost:3001/api/cpu-task?iterations=200000 --label=\"Single Instance (Node 1)\"",
+    "benchmark:cluster": "node benchmark.js --target=http://localhost:8080/api/cpu-task?iterations=200000 --label=\"Load Balanced Cluster (3 Nodes)\"",
+    "benchmark:quick": "node benchmark.js --target=http://localhost:8080/api/info --label=\"Cluster Light Load (/api/info)\"",
     "docker:up": "docker compose up --build",
     "docker:down": "docker compose down"
   },

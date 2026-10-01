@@ -12,6 +12,15 @@ let isHealthy = true;
 // Mô phỏng trạng thái lưu trong RAM (Stateful Anti-pattern)
 let inMemoryCounter = 0;
 
+// 0. Root endpoint (Stateless)
+app.get('/', (req: Request, res: Response) => {
+  res.status(200).json({
+    status: 'OK',
+    instanceId: INSTANCE_ID,
+    message: 'Backend instance is healthy and ready'
+  });
+});
+
 // 1. Endpoint thông tin node (Stateless)
 app.get('/api/info', (req: Request, res: Response) => {
   res.json({
