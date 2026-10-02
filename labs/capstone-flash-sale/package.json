@@ -1,0 +1,21 @@
+{
+  "name": "capstone-flash-sale",
+  "version": "1.0.0",
+  "description": "Capstone Project: High-Concurrency Flash Sale Architecture (100,000 QPS Track)",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "ts-node src/server.ts",
+    "start:prod": "node dist/server.js",
+    "test:capstone": "node benchmark-flash-sale.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.13.5",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.3"
+  }
+}
