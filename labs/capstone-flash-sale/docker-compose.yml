@@ -15,6 +15,8 @@ services:
   app-1:
     build: .
     container_name: capstone_app_1
+    ports:
+      - "3000:3000"
     environment:
       - PORT=3000
       - REDIS_URL=redis://redis:6379
