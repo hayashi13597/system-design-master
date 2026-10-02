@@ -1,0 +1,22 @@
+{
+  "name": "lab-06-distributed-lock",
+  "version": "1.0.0",
+  "description": "Module 06: CAP/PACELC, Distributed Locks & Overselling Defense",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "ts-node src/server.ts",
+    "start:prod": "node dist/server.js",
+    "test:overselling": "node benchmark-overselling.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.13.5",
+    "autocannon": "^7.15.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.3"
+  }
+}
