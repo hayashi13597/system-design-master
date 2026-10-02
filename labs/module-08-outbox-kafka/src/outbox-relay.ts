@@ -1,5 +1,5 @@
-import { db } from './mock-db.js';
-import { kafka } from './mock-kafka.js';
+import { db } from './mock-db';
+import { kafka } from './mock-kafka';
 
 export interface RelayStats {
   pendingBefore: number;

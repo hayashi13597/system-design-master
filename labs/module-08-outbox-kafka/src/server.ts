@@ -1,8 +1,8 @@
 import express from 'express';
-import { db } from './mock-db.js';
-import { kafka } from './mock-kafka.js';
-import { orderService } from './order-service.js';
-import { outboxRelay } from './outbox-relay.js';
+import { db } from './mock-db';
+import { kafka } from './mock-kafka';
+import { orderService } from './order-service';
+import { outboxRelay } from './outbox-relay';
 
 const app = express();
 app.use(express.json());

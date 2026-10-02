@@ -1,5 +1,5 @@
-import { db, Order, OutboxEvent } from './mock-db.js';
-import { kafka } from './mock-kafka.js';
+import { db, Order, OutboxEvent } from './mock-db';
+import { kafka } from './mock-kafka';
 
 export interface CreateOrderResult {
   orderId: string;
