@@ -15,7 +15,7 @@
 | **05** | **Database Sharding, Consistent Hashing & Snowflake ID** | ✅ **Hoàn thành** | [docs/05-db-sharding-consistent-hashing.md](docs/05-db-sharding-consistent-hashing.md) | [labs/module-05-db-sharding/](labs/module-05-db-sharding/) |
 | **06** | **CAP/PACELC, Distributed Locks & Redlock** | ✅ **Hoàn thành** | [docs/06-cap-distributed-locks.md](docs/06-cap-distributed-locks.md) | [labs/module-06-distributed-lock/](labs/module-06-distributed-lock/) |
 | **07** | **Message Queues, Dead Letter Queue & Idempotency** | ✅ **Hoàn thành** | [docs/07-message-queues-idempotency.md](docs/07-message-queues-idempotency.md) | [labs/module-07-message-queues/](labs/module-07-message-queues/) |
-| **08** | **Event Streaming & Transactional Outbox Pattern** | 🟢 **Đang học** | [docs/08-outbox-pattern-event-streaming.md](docs/08-outbox-pattern-event-streaming.md) | [labs/module-08-outbox-kafka/](labs/module-08-outbox-kafka/) |
+| **08** | **Event Streaming & Transactional Outbox Pattern** | ✅ **Hoàn thành** | [docs/08-outbox-pattern-event-streaming.md](docs/08-outbox-pattern-event-streaming.md) | [labs/module-08-outbox-kafka/](labs/module-08-outbox-kafka/) |
 | **09** | **Capstone: High-Concurrency Flash Sale Architecture** | ⚪ Chờ | [docs/09-capstone-flash-sale.md](docs/09-capstone-flash-sale.md) | `labs/capstone-flash-sale/` |
 
 ---
