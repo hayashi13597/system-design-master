@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: rabbitmq-broker
+    ports:
+      - "5672:5672"     # AMQP Protocol
+      - "15672:15672"   # Management Web UI (user: guest / pass: guest)
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    networks:
+      - queue-network
+
+networks:
+  queue-network:
+    driver: bridge
