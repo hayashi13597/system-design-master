@@ -23,8 +23,10 @@ labs/capstone-flash-sale/
 │   ├── order-queue.ts         # Asynchronous Message Queue (Peak Shaving Buffer)
 │   ├── db-store.ts            # PostgreSQL Store với Transactional Outbox Pattern
 │   └── server.ts              # Express API Server tích hợp toàn bộ Phễu Lọc Tải Đa Tầng
+├── Dockerfile                 # Image build cho App Cluster Node (Node.js 22 Alpine)
+├── nginx.conf                 # Cấu hình API Gateway / Reverse Proxy & Load Balancer
+├── docker-compose.yml         # Cụm Production: Nginx + 2 App Nodes + Redis + RabbitMQ + PostgreSQL
 ├── benchmark-flash-sale.js    # Bài test bắn 1,000 concurrent requests tranh mua 50 vé
-├── docker-compose.yml         # Kiến trúc Production: Nginx + Redis + RabbitMQ + PostgreSQL
 ├── package.json
 └── tsconfig.json
 ```
@@ -33,17 +35,22 @@ labs/capstone-flash-sale/
 
 ## 🚀 Hướng dẫn Cài đặt & Khởi chạy
 
-### 1. Cài đặt Dependencies và Build Code
+### Cách 1: Khởi chạy bằng Docker Compose (Khuyên dùng)
+
+Toàn bộ cụm bao gồm Load Balancer (Nginx), 2 App Nodes (`app-1`, `app-2`), Redis, RabbitMQ và PostgreSQL:
+
+```bash
+cd labs/capstone-flash-sale
+docker compose up -d --build
+```
+*API Gateway sẽ lắng nghe tại cổng `http://localhost:80` (hoặc test trực tiếp từng app node tại cổng `3000`).*
+
+### Cách 2: Khởi chạy Local (Node.js)
 
 ```bash
 cd labs/capstone-flash-sale
 npm install
 npm run build
-```
-
-### 2. Khởi động Capstone Server
-
-```bash
 npm start
 ```
 *Server sẽ lắng nghe tại cổng `http://localhost:3000`.*
