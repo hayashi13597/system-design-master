@@ -1,4 +1,18 @@
-const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
+let BASE_URL = process.env.BASE_URL || (process.argv[2] && process.argv[2].startsWith('http') ? process.argv[2] : '');
+
+async function initBaseUrl() {
+  if (BASE_URL) return;
+  for (const candidate of ['http://localhost:80', 'http://localhost:3000']) {
+    try {
+      const res = await fetch(`${candidate}/api/system/status`, { signal: AbortSignal.timeout(1000) });
+      if (res.ok) {
+        BASE_URL = candidate;
+        return;
+      }
+    } catch {}
+  }
+  BASE_URL = 'http://localhost:80';
+}
 
 async function request(path, options = {}) {
   const url = `${BASE_URL}${path}`;
@@ -13,8 +27,10 @@ async function request(path, options = {}) {
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function runBenchmark() {
+  await initBaseUrl();
   console.log(`\n===========================================================`);
   console.log(`  🏛️ BẮT ĐẦU ĐO KIỂM CAPSTONE: HIGH-CONCURRENCY FLASH SALE`);
+  console.log(`  🎯 Target URL: ${BASE_URL}`);
   console.log(`===========================================================`);
 
   const INITIAL_STOCK = 50;
