@@ -1,0 +1,21 @@
+{
+  "name": "lab-04-db-replication",
+  "version": "1.0.0",
+  "description": "Module 04: Database Replication, Read/Write Splitting & Replication Lag",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "ts-node src/server.ts",
+    "start:prod": "node dist/server.js",
+    "test:replication": "node benchmark-replication.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.13.5",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.3"
+  }
+}
