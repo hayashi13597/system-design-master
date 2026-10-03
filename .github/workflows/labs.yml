@@ -1,0 +1,33 @@
+name: Real infrastructure labs
+on: [push, pull_request]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build && npm test
+      - name: Sequential clean integration tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          for lab in 00 01 02 03 04 05 06 07 08 09 10; do
+            npm run lab:up -- "$lab"
+            if ! npm run lab:test -- "$lab"; then
+              node scripts/lab.mjs compose "$lab" logs --tail 80
+              exit 1
+            fi
+            npm run lab:down -- "$lab" --volumes
+          done
+      - name: Cleanup
+        if: always()
+        shell: bash
+        run: |
+          for lab in 00 01 02 03 04 05 06 07 08 09 10; do
+            npm run lab:down -- "$lab" --volumes || true
+          done
