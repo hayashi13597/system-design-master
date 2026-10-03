@@ -1,69 +1,351 @@
-services:
-  # 1. API Load Balancer (Tầng 1 & 2)
-  nginx:
-    image: nginx:alpine
-    container_name: capstone_nginx
-    ports:
-      - "80:80"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-    depends_on:
-      - app-1
-      - app-2
-
-  # 2. App Cluster (Tầng 3: Stateless Application Nodes)
-  app-1:
-    build: .
-    container_name: capstone_app_1
-    ports:
-      - "3000:3000"
-    environment:
-      - PORT=3000
-      - REDIS_URL=redis://redis:6379
-      - DB_URL=postgres://postgres:password123@postgres:5432/flashsale
-    depends_on:
-      - redis
-      - postgres
-
-  app-2:
-    build: .
-    container_name: capstone_app_2
-    environment:
-      - PORT=3000
-      - REDIS_URL=redis://redis:6379
-      - DB_URL=postgres://postgres:password123@postgres:5432/flashsale
-    depends_on:
-      - redis
-      - postgres
-
-  # 3. Redis In-Memory Engine (Tầng 3: Atomic Pre-deduction)
-  redis:
-    image: redis:7-alpine
-    container_name: capstone_redis
-    ports:
-      - "6379:6379"
-    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
-
-  # 4. Message Queue (Tầng 4: Peak Shaving Buffer)
-  rabbitmq:
-    image: rabbitmq:3-management-alpine
-    container_name: capstone_rabbitmq
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-
-  # 5. PostgreSQL Database (Tầng 5: Persistent Storage & Outbox)
-  postgres:
-    image: postgres:16-alpine
-    container_name: capstone_postgres
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password123
-      POSTGRES_DB: flashsale
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-
-volumes:
-  pgdata:
+{
+  "name": "sdm-09",
+  "services": {
+    "postgres": {
+      "image": "postgres:16.10-alpine",
+      "environment": {
+        "POSTGRES_USER": "postgres",
+        "POSTGRES_PASSWORD": "lab_password",
+        "POSTGRES_DB": "lab"
+      },
+      "ports": [
+        "127.0.0.1:55432:5432"
+      ],
+      "volumes": [
+        "pgdata:/var/lib/postgresql/data",
+        "../../infra/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "pg_isready -h 127.0.0.1 -U postgres -d lab"
+        ],
+        "interval": "2s",
+        "timeout": "2s",
+        "retries": 30
+      }
+    },
+    "redis": {
+      "image": "redis:7.4.6-alpine",
+      "command": [
+        "redis-server",
+        "--appendonly",
+        "yes"
+      ],
+      "volumes": [
+        "redisdata:/data"
+      ],
+      "ports": [
+        "127.0.0.1:56379:6379"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "redis-cli",
+          "ping"
+        ],
+        "interval": "2s",
+        "timeout": "2s",
+        "retries": 20
+      }
+    },
+    "rabbitmq": {
+      "image": "rabbitmq:3.13.7-management-alpine",
+      "environment": {
+        "RABBITMQ_DEFAULT_USER": "lab",
+        "RABBITMQ_DEFAULT_PASS": "lab_password"
+      },
+      "volumes": [
+        "rabbitdata:/var/lib/rabbitmq"
+      ],
+      "ports": [
+        "127.0.0.1:55672:5672",
+        "127.0.0.1:15672:15672"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "rabbitmq-diagnostics",
+          "-q",
+          "ping"
+        ],
+        "interval": "3s",
+        "timeout": "5s",
+        "retries": 40
+      }
+    },
+    "app-1": {
+      "build": {
+        "context": "../..",
+        "dockerfile": "infra/Dockerfile"
+      },
+      "image": "system-design-lab:local",
+      "environment": {
+        "LAB": "09",
+        "DB_URL": "postgres://postgres:lab_password@postgres:5432/lab",
+        "REDIS_URL": "redis://redis:6379",
+        "RABBIT_URL": "amqp://lab:lab_password@rabbitmq",
+        "KAFKA_BROKERS": "redpanda:9092",
+        "RESERVATION_TTL_SECONDS": "${RESERVATION_TTL_SECONDS:-600}",
+        "ROLE": "api",
+        "INSTANCE_ID": "api-1",
+        "WORKER_ID": "1"
+      },
+      "depends_on": {
+        "postgres": {
+          "condition": "service_healthy"
+        },
+        "redis": {
+          "condition": "service_healthy"
+        },
+        "rabbitmq": {
+          "condition": "service_healthy"
+        }
+      },
+      "init": true,
+      "restart": "on-failure",
+      "stop_grace_period": "10s",
+      "ports": [
+        "127.0.0.1:3001:3000"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3000/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+        ],
+        "interval": "3s",
+        "timeout": "4s",
+        "retries": 30
+      }
+    },
+    "app-2": {
+      "build": {
+        "context": "../..",
+        "dockerfile": "infra/Dockerfile"
+      },
+      "image": "system-design-lab:local",
+      "environment": {
+        "LAB": "09",
+        "DB_URL": "postgres://postgres:lab_password@postgres:5432/lab",
+        "REDIS_URL": "redis://redis:6379",
+        "RABBIT_URL": "amqp://lab:lab_password@rabbitmq",
+        "KAFKA_BROKERS": "redpanda:9092",
+        "RESERVATION_TTL_SECONDS": "${RESERVATION_TTL_SECONDS:-600}",
+        "ROLE": "api",
+        "INSTANCE_ID": "api-2",
+        "WORKER_ID": "2"
+      },
+      "depends_on": {
+        "postgres": {
+          "condition": "service_healthy"
+        },
+        "redis": {
+          "condition": "service_healthy"
+        },
+        "rabbitmq": {
+          "condition": "service_healthy"
+        }
+      },
+      "init": true,
+      "restart": "on-failure",
+      "stop_grace_period": "10s",
+      "ports": [
+        "127.0.0.1:3002:3000"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3000/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+        ],
+        "interval": "3s",
+        "timeout": "4s",
+        "retries": 30
+      }
+    },
+    "consumer-1": {
+      "build": {
+        "context": "../..",
+        "dockerfile": "infra/Dockerfile"
+      },
+      "image": "system-design-lab:local",
+      "environment": {
+        "LAB": "09",
+        "DB_URL": "postgres://postgres:lab_password@postgres:5432/lab",
+        "REDIS_URL": "redis://redis:6379",
+        "RABBIT_URL": "amqp://lab:lab_password@rabbitmq",
+        "KAFKA_BROKERS": "redpanda:9092",
+        "RESERVATION_TTL_SECONDS": "${RESERVATION_TTL_SECONDS:-600}",
+        "ROLE": "consumer",
+        "INSTANCE_ID": "consumer-1",
+        "WORKER_ID": "1"
+      },
+      "depends_on": {
+        "postgres": {
+          "condition": "service_healthy"
+        },
+        "redis": {
+          "condition": "service_healthy"
+        },
+        "rabbitmq": {
+          "condition": "service_healthy"
+        }
+      },
+      "init": true,
+      "restart": "on-failure",
+      "stop_grace_period": "10s"
+    },
+    "consumer-2": {
+      "build": {
+        "context": "../..",
+        "dockerfile": "infra/Dockerfile"
+      },
+      "image": "system-design-lab:local",
+      "environment": {
+        "LAB": "09",
+        "DB_URL": "postgres://postgres:lab_password@postgres:5432/lab",
+        "REDIS_URL": "redis://redis:6379",
+        "RABBIT_URL": "amqp://lab:lab_password@rabbitmq",
+        "KAFKA_BROKERS": "redpanda:9092",
+        "RESERVATION_TTL_SECONDS": "${RESERVATION_TTL_SECONDS:-600}",
+        "ROLE": "consumer",
+        "INSTANCE_ID": "consumer-2",
+        "WORKER_ID": "2"
+      },
+      "depends_on": {
+        "postgres": {
+          "condition": "service_healthy"
+        },
+        "redis": {
+          "condition": "service_healthy"
+        },
+        "rabbitmq": {
+          "condition": "service_healthy"
+        }
+      },
+      "init": true,
+      "restart": "on-failure",
+      "stop_grace_period": "10s"
+    },
+    "relay": {
+      "build": {
+        "context": "../..",
+        "dockerfile": "infra/Dockerfile"
+      },
+      "image": "system-design-lab:local",
+      "environment": {
+        "LAB": "09",
+        "DB_URL": "postgres://postgres:lab_password@postgres:5432/lab",
+        "REDIS_URL": "redis://redis:6379",
+        "RABBIT_URL": "amqp://lab:lab_password@rabbitmq",
+        "KAFKA_BROKERS": "redpanda:9092",
+        "RESERVATION_TTL_SECONDS": "${RESERVATION_TTL_SECONDS:-600}",
+        "ROLE": "relay",
+        "INSTANCE_ID": "relay-1",
+        "WORKER_ID": "1"
+      },
+      "depends_on": {
+        "postgres": {
+          "condition": "service_healthy"
+        },
+        "redis": {
+          "condition": "service_healthy"
+        },
+        "rabbitmq": {
+          "condition": "service_healthy"
+        }
+      },
+      "init": true,
+      "restart": "on-failure",
+      "stop_grace_period": "10s"
+    },
+    "expiry": {
+      "build": {
+        "context": "../..",
+        "dockerfile": "infra/Dockerfile"
+      },
+      "image": "system-design-lab:local",
+      "environment": {
+        "LAB": "09",
+        "DB_URL": "postgres://postgres:lab_password@postgres:5432/lab",
+        "REDIS_URL": "redis://redis:6379",
+        "RABBIT_URL": "amqp://lab:lab_password@rabbitmq",
+        "KAFKA_BROKERS": "redpanda:9092",
+        "RESERVATION_TTL_SECONDS": "${RESERVATION_TTL_SECONDS:-600}",
+        "ROLE": "expiry",
+        "INSTANCE_ID": "expiry-1",
+        "WORKER_ID": "1"
+      },
+      "depends_on": {
+        "postgres": {
+          "condition": "service_healthy"
+        },
+        "redis": {
+          "condition": "service_healthy"
+        },
+        "rabbitmq": {
+          "condition": "service_healthy"
+        }
+      },
+      "init": true,
+      "restart": "on-failure",
+      "stop_grace_period": "10s"
+    },
+    "nginx": {
+      "image": "nginx:1.28.0-alpine",
+      "ports": [
+        "127.0.0.1:8080:8080"
+      ],
+      "volumes": [
+        "./nginx.conf:/etc/nginx/nginx.conf:ro"
+      ],
+      "depends_on": {
+        "app-1": {
+          "condition": "service_healthy"
+        },
+        "app-2": {
+          "condition": "service_healthy"
+        }
+      }
+    },
+    "prometheus": {
+      "image": "prom/prometheus:v3.5.0",
+      "profiles": [
+        "observability"
+      ],
+      "ports": [
+        "127.0.0.1:9090:9090"
+      ],
+      "volumes": [
+        "../../infra/prometheus.yml:/etc/prometheus/prometheus.yml:ro",
+        "promdata:/prometheus"
+      ]
+    },
+    "grafana": {
+      "image": "grafana/grafana:12.1.1",
+      "profiles": [
+        "observability"
+      ],
+      "ports": [
+        "127.0.0.1:3005:3000"
+      ],
+      "environment": {
+        "GF_SECURITY_ADMIN_PASSWORD": "lab_password"
+      },
+      "volumes": [
+        "grafanadata:/var/lib/grafana",
+        "../../infra/grafana:/etc/grafana/provisioning:ro"
+      ]
+    }
+  },
+  "volumes": {
+    "pgdata": {},
+    "redisdata": {},
+    "rabbitdata": {},
+    "promdata": {},
+    "grafanadata": {}
+  }
+}

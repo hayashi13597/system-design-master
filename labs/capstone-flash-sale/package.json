@@ -1,21 +1,13 @@
 {
-  "name": "capstone-flash-sale",
-  "version": "1.0.0",
-  "description": "Capstone Project: High-Concurrency Flash Sale Architecture (100,000 QPS Track)",
-  "main": "dist/server.js",
+  "name": "sdm-lab-09",
+  "version": "2.0.0",
+  "private": true,
   "scripts": {
-    "build": "tsc",
-    "start": "ts-node src/server.ts",
-    "start:prod": "node dist/server.js",
-    "test:capstone": "node benchmark-flash-sale.js"
-  },
-  "dependencies": {
-    "express": "^4.21.2"
-  },
-  "devDependencies": {
-    "@types/express": "^5.0.0",
-    "@types/node": "^22.13.5",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.7.3"
+    "start": "node ../../scripts/lab.mjs up 09",
+    "build": "cd ../.. && npm run build",
+    "test": "node ../../scripts/lab.mjs test 09",
+    "benchmark": "node ../../scripts/lab.mjs benchmark 09",
+    "docker:up": "node ../../scripts/lab.mjs up 09",
+    "docker:down": "node ../../scripts/lab.mjs down 09"
   }
 }

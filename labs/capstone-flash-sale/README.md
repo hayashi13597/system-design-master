@@ -1,89 +1,42 @@
-# 🏛️ Đồ Án Tổng Hợp (Capstone): Kiến Trúc Flash Sale & Săn Vé 100,000 QPS
+# Lab 09: Flash sale với nguồn dữ liệu chuẩn PostgreSQL
 
-Chào mừng bạn đến với **Capstone Project: High-Concurrency Flash Sale / Ticket Booking Architecture**.
+## Mục tiêu và hạ tầng
 
-Đây là đồ án tổng kết tích hợp toàn bộ kiến thức và kỹ thuật đã học từ **Module 01 đến Module 08**:
-- **Module 01:** Horizontal Scaling & Stateless App Node Cluster
-- **Module 02:** In-Memory Caching & Thundering Herd Defense
-- **Module 03:** Sliding Window Counter Rate Limiting (Traffic Shaping / WAF)
-- **Module 04 & 05:** Database Sharding & Read/Write Splitting
-- **Module 06:** Concurrency Control, Zero Overselling & Atomic Lua Script Execution
-- **Module 07:** Asynchronous Message Queue Peak Shaving Buffer & Idempotency
-- **Module 08:** Transactional Outbox Pattern & Event-Driven Reliability
+Nginx, 2 API, PostgreSQL, Redis, RabbitMQ, relay, 2 consumer, expiry worker. Mọi dữ liệu nghiệp vụ trong đường chạy chính đều dùng dịch vụ thật. Runtime dùng chung nằm trong `runtime/src` tại root; schema và image trong `infra`. Các ví dụ v1 ở `examples/legacy-simulation` chỉ để tham khảo, không tham gia lệnh chạy chính.
 
----
-
-## 🏗️ Cấu trúc Thư mục
-
-```text
-labs/capstone-flash-sale/
-├── src/
-│   ├── redis-inventory.ts     # In-memory Redis Engine (Atomic Lua Pre-deduction + User Limit)
-│   ├── rate-limiter.ts        # Sliding Window Rate Limiter (Chống Spam / Botnet)
-│   ├── order-queue.ts         # Asynchronous Message Queue (Peak Shaving Buffer)
-│   ├── db-store.ts            # PostgreSQL Store với Transactional Outbox Pattern
-│   └── server.ts              # Express API Server tích hợp toàn bộ Phễu Lọc Tải Đa Tầng
-├── Dockerfile                 # Image build cho App Cluster Node (Node.js 22 Alpine)
-├── nginx.conf                 # Cấu hình API Gateway / Reverse Proxy & Load Balancer
-├── docker-compose.yml         # Cụm Production: Nginx + 2 App Nodes + Redis + RabbitMQ + PostgreSQL
-├── benchmark-flash-sale.js    # Bài test bắn 1,000 concurrent requests tranh mua 50 vé
-├── package.json
-└── tsconfig.json
-```
-
----
-
-## 🚀 Hướng dẫn Cài đặt & Khởi chạy
-
-### Cách 1: Khởi chạy bằng Docker Compose (Khuyên dùng)
-
-Toàn bộ cụm bao gồm Load Balancer (Nginx), 2 App Nodes (`app-1`, `app-2`), Redis, RabbitMQ và PostgreSQL:
+## Chạy từ root repository
 
 ```bash
-cd labs/capstone-flash-sale
-docker compose up -d --build
+npm ci
+npm run lab:up -- 09
+npm run lab:test -- 09
+npm run lab:benchmark -- 09
+npm run lab:down -- 09
 ```
-*API Gateway sẽ lắng nghe tại cổng `http://localhost:80` (hoặc test trực tiếp từng app node tại cổng `3000`).*
 
-### Cách 2: Khởi chạy Local (Node.js)
+Gateway: http://localhost:8080. App node: http://localhost:3001 và :3002 (lab 01 thêm :3003). PostgreSQL: localhost:55432, database `lab`, user `postgres`, password `lab_password`. Chạy một lab tại một thời điểm vì các cổng host dùng chung. `down` giữ dữ liệu; `npm run lab:reset -- 09` **xóa volume và dữ liệu của lab** trước khi nạp fixture.
+
+## API và thí nghiệm
+
+POST /api/flash-sale/buy {"userId":"buyer_1","quantity":1} — header Idempotency-Key; GET /api/flash-sale/order/:id; POST /api/flash-sale/order/:id/pay; GET /api/system/status
+
+1.000 người tranh 50 vé: 50 reservation, 950 conflict; kiểm tra SQL trực tiếp. Restart API không mất đơn; broker offline giữ outbox; hết hạn hoàn kho một lần.
+
+Integration test kiểm tra bằng assertion, truy vấn PostgreSQL và broker trực tiếp; test có lỗi trả exit code khác 0. Test cần môi trường sạch, có thể dừng/restart container và thay đổi fixture. Chạy reset trước khi chạy test lại sau một bài thực hành.
+
+## Quan sát và phục hồi
 
 ```bash
-cd labs/capstone-flash-sale
-npm install
-npm run build
-npm start
-```
-*Server sẽ lắng nghe tại cổng `http://localhost:3000`.*
-
----
-
-## 🧪 Chạy Bài Kiểm Tra Tự Động (Stress Test Benchmark)
-
-Mở một terminal khác và chạy:
-
-```bash
-npm run test:capstone
+node scripts/lab.mjs compose 09 logs --tail 30 app-1
+node scripts/lab.mjs compose 09 stop app-1
+node scripts/lab.mjs compose 09 start app-1
+node scripts/lab.mjs compose 09 exec -T postgres psql -U postgres -d lab
 ```
 
-### Kịch bản kiểm tra gồm 4 giai đoạn thực chiến:
-1. **Giai đoạn 1 (Cơn bão 1,000 Users tranh mua 50 vé):**
-   - 1,000 requests đồng thời kích hoạt trong vài mili-giây.
-   - Đúng **50 khách hàng đầu tiên** nhận phản hồi `202 Accepted` ($< 5\text{ms}$).
-   - **950 khách hàng còn lại** nhận phản hồi `400 Out of Stock` ngay lập tức mà **không chạm tới Database**.
-2. **Giai đoạn 2 (Tấn công mua lặp / Double-spending):**
-   - User đã mua thành công cố tình gửi thêm 5 requests liên tiếp $\rightarrow$ Bị chặn ngay với `409 Conflict (Mỗi user chỉ được mua 1 vé)`.
-3. **Giai đoạn 3 (Tấn công Botnet Click-Spam):**
-   - Botnet gửi 15 requests dồn dập $\rightarrow$ Tầng Rate Limiter chặn đứng với `429 Too Many Requests`.
-4. **Giai đoạn 4 (Kiểm chứng Ghi đĩa DB & Outbox):**
-   - Queue Consumer dàn phẳng lưu lượng và ghi êm dịu 50 đơn hàng vào PostgreSQL.
-   - **Cam kết vàng:** Tồn kho Redis = 0, Đơn hàng DB = 50, **Bán âm kho = 0 ĐƠN (ZERO OVERSELLING)!**
+`/health/live` kiểm tra tiến trình; `/health/ready` kiểm tra dependency phục vụ API; `/metrics` xuất Prometheus; response có `X-Request-ID` và `X-Instance-ID`. Header định danh trong bài học là fixture, chưa phải xác thực production. Benchmark xuất JSON trong `reports/`, tách khỏi kiểm thử đúng/sai.
 
----
+## Tự đánh giá
 
-## 📡 API Endpoints Tham Khảo
+Reservation khác đơn đã thanh toán thế nào? Vì sao broker outage không cần rollback đơn đã commit?
 
-- `POST /api/flash-sale/buy`: Đặt vé Flash Sale (yêu cầu `{ userId, itemId, quantity }`).
-- `GET /api/flash-sale/product/:itemId`: Kiểm tra thông tin vé và tồn kho thời gian thực.
-- `GET /api/flash-sale/order/:orderId`: Tra cứu tiến độ xuất vé theo `orderId`.
-- `GET /api/system/status`: Bảng điều khiển giám sát toàn bộ chỉ số từ Gateway đến Database.
-- `POST /api/system/reset`: Reset hệ thống và nạp lại tồn kho thử nghiệm.
+Viết nhận xét với số liệu thực trên máy của bạn, chỉ rõ giả định và failure window. Xem tài liệu chuyên đề trong `docs/` và [giới hạn vận hành](../../docs/lab-operations.md).
