@@ -1,80 +1,42 @@
-# 🧪 THỰC HÀNH LAB 07: MESSAGE QUEUES, DLQ & IDEMPOTENCY
+# Lab 07: RabbitMQ và idempotent consumer
 
-> **Mục tiêu thực hành**:
-> 1. Trực tiếp kiểm chứng cơ chế **At-Least-Once Delivery**: Khi cổng thanh toán retry gửi lại 10 lần cùng một webhook giao dịch, **Idempotent Consumer Pattern** đảm bảo chỉ cộng tiền ĐÚNG 1 LẦN duy nhất.
-> 2. Trực tiếp quan sát thảm họa **Poison Message (Tin nhắn có độc)**: Cơ chế **Dead Letter Queue (DLQ)** kết hợp **Exponential Backoff Retry** giúp cách ly tin nhắn lỗi sang một hàng đợi riêng, bảo vệ hàng đợi chính không bao giờ bị nghẽn (Head-of-Line Blocking).
+## Mục tiêu và hạ tầng
 
----
+RabbitMQ, PostgreSQL, 2 API và 2 consumer. Mọi dữ liệu nghiệp vụ trong đường chạy chính đều dùng dịch vụ thật. Runtime dùng chung nằm trong `runtime/src` tại root; schema và image trong `infra`. Các ví dụ v1 ở `examples/legacy-simulation` chỉ để tham khảo, không tham gia lệnh chạy chính.
 
-## 🛠️ Cài đặt & Khởi động Server
+## Chạy từ root repository
 
-1. Mở terminal, di chuyển vào thư mục lab và cài đặt dependencies:
-   ```bash
-   cd labs/module-07-message-queues
-   npm install
-   npm run build
-   ```
-
-2. Khởi động server:
-   ```bash
-   npm run start
-   ```
-   * Server lắng nghe tại: `http://localhost:3000`
-   * Xem số dư ví: `http://localhost:3000/api/account`
-   * Xem trạng thái Hàng đợi/DLQ: `http://localhost:3000/api/queue/status`
-
----
-
-## 🔬 2 Bài Thí nghiệm Thực chiến
-
-### Thí nghiệm 1: Chạy Script Đo kiểm Tự động (Benchmark)
-
-Mở terminal thứ hai và chạy:
 ```bash
-npm run test:idempotency
+npm ci
+npm run lab:up -- 07
+npm run lab:test -- 07
+npm run lab:benchmark -- 07
+npm run lab:down -- 07
 ```
 
-* **Kết quả quan sát**:
-  1. **Bài test 1: Cổng thanh toán Retry 10 lần cùng 1 giao dịch**:
-     * Cổng thanh toán gửi 10 webhooks liên tiếp nạp 100,000đ.
-     * Consumer phát hiện **9 giao dịch trùng lặp** và triệt tiêu.
-     * Số dư tài khoản tăng **ĐÚNG 100,000đ** (thay vì bị cộng lố lên 1,000,000đ!).
-  2. **Bài test 2: Tin nhắn có độc & Dead Letter Queue (DLQ)**:
-     * Gửi 1 tin nhắn hỏng kèm theo 2 giao dịch hợp lệ.
-     * Broker tự động retry 3 lần với Exponential Backoff (40ms, 80ms, 160ms).
-     * Khi hết 3 lần, tin nhắn độc tự động bị cách ly vào **Dead Letter Queue (`deadLetterQueueSize: 1`)**.
-     * Hàng đợi chính thông suốt hoàn toàn, 2 giao dịch hợp lệ sau đó được xử lý thành công!
+Gateway: http://localhost:8080. App node: http://localhost:3001 và :3002 (lab 01 thêm :3003). PostgreSQL: localhost:55432, database `lab`, user `postgres`, password `lab_password`. Chạy một lab tại một thời điểm vì các cổng host dùng chung. `down` giữ dữ liệu; `npm run lab:reset -- 07` **xóa volume và dữ liệu của lab** trước khi nạp fixture.
 
----
+## API và thí nghiệm
 
-### Thí nghiệm 2: Kiểm thử thủ công bằng cURL
+POST /api/payments {"idempotencyKey":"p1","amount":100}; GET /api/payments/balance
 
-1. **Gửi một giao dịch nạp tiền lần 1**:
-   ```bash
-   curl -X POST http://localhost:3000/api/webhooks/payment \
-     -H "Content-Type: application/json" \
-     -d '{"idempotencyKey": "TX_TEST_01", "amount": 250000}'
-   ```
-   * Server phản hồi `202 Accepted` ngay lập tức trong 2ms!
+Gửi 30 message trùng: balance chỉ tăng 100. Poison message thêm poison:true đi retry rồi DLQ. Crash sau commit trước ACK không cộng tiền lần hai.
 
-2. **Xem số dư tài khoản**:
-   ```bash
-   curl http://localhost:3000/api/account
-   ```
-   * `"currentBalance": 250000`.
+Integration test kiểm tra bằng assertion, truy vấn PostgreSQL và broker trực tiếp; test có lỗi trả exit code khác 0. Test cần môi trường sạch, có thể dừng/restart container và thay đổi fixture. Chạy reset trước khi chạy test lại sau một bài thực hành.
 
-3. **Cố tình gửi lại đúng giao dịch đó lần 2 (Mô phỏng mạng retry)**:
-   ```bash
-   curl -X POST http://localhost:3000/api/webhooks/payment \
-     -H "Content-Type: application/json" \
-     -d '{"idempotencyKey": "TX_TEST_01", "amount": 250000}'
-   ```
-   * Kiểm tra lại số dư: Vẫn giữ nguyên `250,000đ`, trường `"duplicatesPrevented": 1` tăng lên!
+## Quan sát và phục hồi
 
-4. **Gửi một tin nhắn độc hại để xem nó vào DLQ**:
-   ```bash
-   curl -X POST http://localhost:3000/api/webhooks/poison-message \
-     -H "Content-Type: application/json" \
-     -d '{"idempotencyKey": "MALICIOUS_BOT"}'
-   ```
-   * Sau 1 giây, kiểm tra `http://localhost:3000/api/queue/status`: Bạn sẽ thấy tin nhắn này đã nằm gọn trong `deadLetterMessages`!
+```bash
+node scripts/lab.mjs compose 07 logs --tail 30 app-1
+node scripts/lab.mjs compose 07 stop app-1
+node scripts/lab.mjs compose 07 start app-1
+node scripts/lab.mjs compose 07 exec -T postgres psql -U postgres -d lab
+```
+
+`/health/live` kiểm tra tiến trình; `/health/ready` kiểm tra dependency phục vụ API; `/metrics` xuất Prometheus; response có `X-Request-ID` và `X-Instance-ID`. Header định danh trong bài học là fixture, chưa phải xác thực production. Benchmark xuất JSON trong `reports/`, tách khỏi kiểm thử đúng/sai.
+
+## Tự đánh giá
+
+Tại sao processed key phải commit cùng balance? DLQ cần quy trình kiểm tra và replay nào?
+
+Viết nhận xét với số liệu thực trên máy của bạn, chỉ rõ giả định và failure window. Xem tài liệu chuyên đề trong `docs/` và [giới hạn vận hành](../../docs/lab-operations.md).
