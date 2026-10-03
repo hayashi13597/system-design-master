@@ -1,25 +1,13 @@
 {
-  "name": "lab-03-rate-limiter",
-  "version": "1.0.0",
-  "description": "Module 03: Distributed Rate Limiting & Traffic Shaping",
-  "main": "dist/server.js",
+  "name": "sdm-lab-03",
+  "version": "2.0.0",
+  "private": true,
   "scripts": {
-    "build": "tsc",
-    "start": "ts-node src/server.ts",
-    "start:prod": "node dist/server.js",
-    "benchmark:unprotected": "node benchmark-ratelimit.js --mode=unprotected --label=\"1. Unprotected API (Unlimited Traffic)\"",
-    "benchmark:vulnerable": "node benchmark-ratelimit.js --mode=vulnerable --label=\"2. Naive Non-Atomic Limiter (Race Condition Leak)\"",
-    "benchmark:atomic": "node benchmark-ratelimit.js --mode=atomic --label=\"3. Atomic Sliding Window Limiter (Strict Defense)\"",
-    "benchmark:token-bucket": "node benchmark-ratelimit.js --mode=token-bucket --label=\"4. Token Bucket (Burst Traffic Allowed)\""
-  },
-  "dependencies": {
-    "express": "^4.21.2"
-  },
-  "devDependencies": {
-    "@types/express": "^5.0.0",
-    "@types/node": "^22.13.5",
-    "autocannon": "^7.15.0",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.7.3"
+    "start": "node ../../scripts/lab.mjs up 03",
+    "build": "cd ../.. && npm run build",
+    "test": "node ../../scripts/lab.mjs test 03",
+    "benchmark": "node ../../scripts/lab.mjs benchmark 03",
+    "docker:up": "node ../../scripts/lab.mjs up 03",
+    "docker:down": "node ../../scripts/lab.mjs down 03"
   }
 }

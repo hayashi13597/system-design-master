@@ -1,82 +1,42 @@
-# 🧪 THỰC HÀNH LAB 03: DISTRIBUTED RATE LIMITING & TRAFFIC SHAPING
+# Lab 03: Distributed rate limiting
 
-> **Mục tiêu thực hành**:
-> 1. Trực tiếp kiểm chứng lỗ hổng **Race Condition (TOCTOU)** trong các Rate Limiter viết ẩu, khiến lưu lượng bị lọt qua (Traffic Leak) dù đã cấu hình limit.
-> 2. Kiểm chứng thuật toán **Atomic Sliding Window Counter** (chuẩn Cloudflare): Chặn đứng lưu lượng vượt ngưỡng nghiêm ngặt và chính xác.
-> 3. Trải nghiệm cơ chế **Token Bucket**: Cho phép các đợt lưu lượng bùng nổ (Traffic Burst) an toàn.
-> 4. Kiểm tra các chuẩn HTTP Headers quốc tế: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, và `Retry-After`.
+## Mục tiêu và hạ tầng
 
----
+2 app node, Redis, PostgreSQL. Mọi dữ liệu nghiệp vụ trong đường chạy chính đều dùng dịch vụ thật. Runtime dùng chung nằm trong `runtime/src` tại root; schema và image trong `infra`. Các ví dụ v1 ở `examples/legacy-simulation` chỉ để tham khảo, không tham gia lệnh chạy chính.
 
-## 🛠️ Cài đặt & Khởi động Server
+## Chạy từ root repository
 
-1. Mở terminal, di chuyển vào thư mục lab và cài đặt thư viện:
-   ```bash
-   cd labs/module-03-rate-limiter
-   npm install
-   ```
-
-2. Khởi động server:
-   ```bash
-   npm run start
-   ```
-   * Server lắng nghe tại: `http://localhost:3000`
-   * Giới hạn cấu hình cho bài test: **25 requests / 1 giây**
-
----
-
-## 🔬 4 Kịch bản Đo kiểm Thực tế
-
-Mở một terminal thứ hai để chạy các lệnh benchmark:
-
-### Kịch bản 1: API không được bảo vệ (Unprotected)
 ```bash
-npm run benchmark:unprotected
+npm ci
+npm run lab:up -- 03
+npm run lab:test -- 03
+npm run lab:benchmark -- 03
+npm run lab:down -- 03
 ```
-* **Hiện tượng quan sát**: 100% request đều lọt qua (200 OK). Nếu có botnet hoặc DDOS, toàn bộ backend và DB phía sau sẽ gánh trọn tải.
 
----
+Gateway: http://localhost:8080. App node: http://localhost:3001 và :3002 (lab 01 thêm :3003). PostgreSQL: localhost:55432, database `lab`, user `postgres`, password `lab_password`. Chạy một lab tại một thời điểm vì các cổng host dùng chung. `down` giữ dữ liệu; `npm run lab:reset -- 03` **xóa volume và dữ liệu của lab** trước khi nạp fixture.
 
-### Kịch bản 2: Rate Limiter ngây thơ bị lỗi Race Condition (TOCTOU Leakage)
+## API và thí nghiệm
+
+GET /api/limit/token-bucket; GET /api/limit/sliding; GET /api/limit/unsafe — header X-User-ID
+
+Token bucket dùng Redis TIME và Lua, quota 25/giây chung giữa các node, capacity 25. Sliding counter xấp xỉ có trọng số cửa sổ trước. Unsafe cố ý tách đọc/ghi để lộ race.
+
+Integration test kiểm tra bằng assertion, truy vấn PostgreSQL và broker trực tiếp; test có lỗi trả exit code khác 0. Test cần môi trường sạch, có thể dừng/restart container và thay đổi fixture. Chạy reset trước khi chạy test lại sau một bài thực hành.
+
+## Quan sát và phục hồi
+
 ```bash
-npm run benchmark:vulnerable
-```
-* **Hiện tượng quan sát**:
-  * Giới hạn lý thuyết trong 2 giây là $\sim 50$ requests ($25 \times 2$).
-  * Nhưng vì thuật toán non-atomic (đọc counter từ cache $\rightarrow$ chờ $\rightarrow$ kiểm tra $\rightarrow$ ghi counter), các request đồng thời cùng đọc ra giá trị cũ.
-  * **Hậu quả**: Hàng chục đến hàng trăm request **bị lọt qua rào chắn** (Số request 200 OK cao hơn nhiều so với 50)! Hệ thống bị lọt tải nghiêm trọng.
-
----
-
-### Kịch bản 3: Phòng thủ nghiêm ngặt với Atomic Sliding Window Limiter
-```bash
-npm run benchmark:atomic
-```
-* **Hiện tượng quan sát**:
-  * Thuật toán Atomic Sliding Window Counter (tương đương với việc chạy **Lua Script** nguyên tử trong Redis).
-  * Trong 2 giây, số lượng request thành công (200 OK) được giới hạn **chính xác tuyệt đối xung quanh mức ~50 requests**.
-  * Toàn bộ hàng ngàn request vượt ngưỡng còn lại đều bị chặn đứng ngay lập tức với mã lỗi **`429 Too Many Requests`**!
-
----
-
-### Kịch bản 4: Kiểm tra HTTP Headers chuẩn bằng cURL
-Gửi 1 request đơn lẻ bằng cURL để xem các headers phản hồi:
-```bash
-curl -i http://localhost:3000/api/atomic-sliding
-```
-Quan sát các headers trả về trong phản hồi HTTP:
-```http
-HTTP/1.1 200 OK
-X-RateLimit-Limit: 25
-X-RateLimit-Remaining: 24
-X-RateLimit-Reset: 1727827250
+node scripts/lab.mjs compose 03 logs --tail 30 app-1
+node scripts/lab.mjs compose 03 stop app-1
+node scripts/lab.mjs compose 03 start app-1
+node scripts/lab.mjs compose 03 exec -T postgres psql -U postgres -d lab
 ```
 
-Nếu bạn gửi liên tục vượt quá 25 request, bạn sẽ nhận được:
-```http
-HTTP/1.1 429 Too Many Requests
-X-RateLimit-Limit: 25
-X-RateLimit-Remaining: 0
-Retry-After: 1
-```
-Client có thể đọc header `Retry-After: 1` để tự động lập lịch thử lại sau 1 giây mà không cần đoán mò!
+`/health/live` kiểm tra tiến trình; `/health/ready` kiểm tra dependency phục vụ API; `/metrics` xuất Prometheus; response có `X-Request-ID` và `X-Instance-ID`. Header định danh trong bài học là fixture, chưa phải xác thực production. Benchmark xuất JSON trong `reports/`, tách khỏi kiểm thử đúng/sai.
+
+## Tự đánh giá
+
+Vì sao token bucket cho phép burst? Vì sao sliding counter không thể hứa giới hạn chính xác trên mọi cửa sổ trượt?
+
+Viết nhận xét với số liệu thực trên máy của bạn, chỉ rõ giả định và failure window. Xem tài liệu chuyên đề trong `docs/` và [giới hạn vận hành](../../docs/lab-operations.md).
