@@ -1,117 +1,42 @@
-# Lab 08: Transactional Outbox Pattern & Event Streaming (Kafka)
+# Lab 08: Kafka-compatible streaming và outbox
 
-Chào mừng bạn đến với phòng thí nghiệm chuyên sâu **Module 08: Transactional Outbox Pattern & Event Streaming**.
+## Mục tiêu và hạ tầng
 
-Trong kiến trúc Microservices và Event-Driven Architecture, **vấn nạn Dual-Write** (ghi đồng thời vào Database và bắn Message sang Kafka/RabbitMQ) là nguyên nhân hàng đầu gây mất mát dữ liệu và mất tính nhất quán giữa các dịch vụ. Lab này sẽ giúp bạn thực chứng:
-1. **Sự cố Dual-Write:** Khi Broker (Kafka) gặp sự cố mạng hoặc sập, đơn hàng đã lưu trong DB nhưng Event bị mất vĩnh viễn (Data Loss).
-2. **Giải pháp Transactional Outbox:** Đảm bảo Atomicity 100% bằng cách lưu Event vào cùng một ACID DB Transaction với nghiệp vụ, và sử dụng **Outbox Relay (CDC / Polling)** để tự động gửi bù khi Broker phục hồi.
+PostgreSQL, Redpanda, 2 API, relay, 2 Kafka consumer cùng group. Mọi dữ liệu nghiệp vụ trong đường chạy chính đều dùng dịch vụ thật. Runtime dùng chung nằm trong `runtime/src` tại root; schema và image trong `infra`. Các ví dụ v1 ở `examples/legacy-simulation` chỉ để tham khảo, không tham gia lệnh chạy chính.
 
----
-
-## 🏗️ Cấu trúc Thư mục
-
-```text
-labs/module-08-outbox-kafka/
-├── src/
-│   ├── mock-db.ts             # ACID Database giả lập (hỗ trợ rollback & commit đồng thời)
-│   ├── mock-kafka.ts          # Kafka Broker giả lập (hỗ trợ toggle Online/Offline)
-│   ├── order-service.ts       # Service tạo đơn: Naive Dual-Write vs Transactional Outbox
-│   ├── outbox-relay.ts        # Polling Worker quét bảng outbox và chuyển tiếp sang Kafka
-│   └── server.ts              # Express API Server
-├── benchmark-outbox.js        # Kịch bản tự động đo kiểm đối chiếu khi Kafka sập
-├── docker-compose.yml         # Kiến trúc Docker thật: PostgreSQL 16 + Redpanda + Console
-├── init.sql                   # SQL Schema cho bảng orders & outbox
-├── package.json
-└── tsconfig.json
-```
-
----
-
-## 🚀 Hướng dẫn Cài đặt & Khởi chạy
-
-### 1. Cài đặt Dependencies và Build Code
+## Chạy từ root repository
 
 ```bash
-cd labs/module-08-outbox-kafka
-npm install
-npm run build
+npm ci
+npm run lab:up -- 08
+npm run lab:test -- 08
+npm run lab:benchmark -- 08
+npm run lab:down -- 08
 ```
 
-### 2. Khởi động Lab Server
+Gateway: http://localhost:8080. App node: http://localhost:3001 và :3002 (lab 01 thêm :3003). PostgreSQL: localhost:55432, database `lab`, user `postgres`, password `lab_password`. Chạy một lab tại một thời điểm vì các cổng host dùng chung. `down` giữ dữ liệu; `npm run lab:reset -- 08` **xóa volume và dữ liệu của lab** trước khi nạp fixture.
+
+## API và thí nghiệm
+
+POST /api/orders {"userId":"u1"} — header Idempotency-Key; GET /api/outbox/status
+
+Stop broker: orders/outbox vẫn commit. Start broker: relay gửi pending. Crash sau publish trước mark tạo duplicate, deliveries chỉ ghi một lần.
+
+Integration test kiểm tra bằng assertion, truy vấn PostgreSQL và broker trực tiếp; test có lỗi trả exit code khác 0. Test cần môi trường sạch, có thể dừng/restart container và thay đổi fixture. Chạy reset trước khi chạy test lại sau một bài thực hành.
+
+## Quan sát và phục hồi
 
 ```bash
-npm start
-```
-*Server sẽ lắng nghe tại cổng `http://localhost:3000`.*
-
----
-
-## 🧪 Chạy Bài Kiểm Tra Tự Động (Benchmark)
-
-Mở một terminal khác và chạy:
-
-```bash
-npm run test:outbox
+node scripts/lab.mjs compose 08 logs --tail 30 app-1
+node scripts/lab.mjs compose 08 stop app-1
+node scripts/lab.mjs compose 08 start app-1
+node scripts/lab.mjs compose 08 exec -T postgres psql -U postgres -d lab
 ```
 
-### Kịch bản kiểm thử mô phỏng 3 giai đoạn:
-1. **Giai đoạn 1 (Kafka Online):** Tạo 5 đơn Naive và 5 đơn Outbox. Cả 2 đều chuyển được sự kiện vào Kafka.
-2. **Giai đoạn 2 (Kafka Crash / Sập mạng):** Broker bị ngắt kết nối (`/api/kafka/toggle`). Hệ thống nhận thêm 10 đơn Naive và 10 đơn Outbox:
-   - Naive: Ghi đơn vào DB thành công, nhưng bắn Kafka thất bại $\rightarrow$ **10 Sự kiện bị bốc hơi vĩnh viễn!**
-   - Outbox: Ghi đơn và ghi Outbox Event trong cùng 1 DB Transaction $\rightarrow$ **10 Sự kiện nằm an toàn ở trạng thái `PENDING`.**
-3. **Giai đoạn 3 (Kafka phục hồi):** Bật lại Kafka. Outbox Relay tự động kích hoạt quét bù và gửi toàn bộ sự kiện còn thiếu sang Kafka $\rightarrow$ **Khôi phục 100% dữ liệu không mất một sự kiện nào!**
+`/health/live` kiểm tra tiến trình; `/health/ready` kiểm tra dependency phục vụ API; `/metrics` xuất Prometheus; response có `X-Request-ID` và `X-Instance-ID`. Header định danh trong bài học là fixture, chưa phải xác thực production. Benchmark xuất JSON trong `reports/`, tách khỏi kiểm thử đúng/sai.
 
----
+## Tự đánh giá
 
-## 📡 API Tham Khảo (Manual Testing qua cURL)
+Vì sao outbox chỉ bảo đảm at-least-once? Một partition và một broker giới hạn throughput/HA ra sao?
 
-### 1. Tạo đơn hàng bằng Naive Dual-Write
-```bash
-curl -X POST http://localhost:3000/api/orders/naive \
-  -H "Content-Type: application/json" \
-  -d '{"userId": "alice", "amount": 250}'
-```
-
-### 2. Tạo đơn hàng bằng Transactional Outbox
-```bash
-curl -X POST http://localhost:3000/api/orders/outbox \
-  -H "Content-Type: application/json" \
-  -d '{"userId": "bob", "amount": 500}'
-```
-
-### 3. Mô phỏng Sập Kafka Broker (Offline)
-```bash
-curl -X POST http://localhost:3000/api/kafka/toggle \
-  -H "Content-Type: application/json" \
-  -d '{"online": false}'
-```
-
-### 4. Kiểm tra Trạng thái Toàn bộ Hệ thống
-```bash
-curl http://localhost:3000/api/system/status
-```
-
-### 5. Khôi phục Kafka Broker (Online)
-```bash
-curl -X POST http://localhost:3000/api/kafka/toggle \
-  -H "Content-Type: application/json" \
-  -d '{"online": true}'
-```
-
-### 6. Kích hoạt Outbox Relay quét bù ngay lập tức
-```bash
-curl -X POST http://localhost:3000/api/relay/trigger
-```
-
----
-
-## 🐳 Khởi chạy Môi trường Production Thực tế với Docker (Tùy chọn)
-
-Nếu máy bạn có Docker Desktop, bạn có thể khởi chạy cụm Database PostgreSQL và Redpanda thật bằng lệnh:
-
-```bash
-docker compose up -d
-```
-- PostgreSQL: `localhost:5432` (user: `postgres`, password: `password123`, db: `ecommerce`)
-- Redpanda Kafka Broker: `localhost:19092`
-- Redpanda Web Console: `http://localhost:8080` (giao diện web trực quan quan sát topic, partitions, và messages)
+Viết nhận xét với số liệu thực trên máy của bạn, chỉ rõ giả định và failure window. Xem tài liệu chuyên đề trong `docs/` và [giới hạn vận hành](../../docs/lab-operations.md).
