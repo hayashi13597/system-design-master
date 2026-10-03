@@ -1,22 +1,13 @@
 {
-  "name": "lab-06-distributed-lock",
-  "version": "1.0.0",
-  "description": "Module 06: CAP/PACELC, Distributed Locks & Overselling Defense",
-  "main": "dist/server.js",
+  "name": "sdm-lab-06",
+  "version": "2.0.0",
+  "private": true,
   "scripts": {
-    "build": "tsc",
-    "start": "ts-node src/server.ts",
-    "start:prod": "node dist/server.js",
-    "test:overselling": "node benchmark-overselling.js"
-  },
-  "dependencies": {
-    "express": "^4.21.2"
-  },
-  "devDependencies": {
-    "@types/express": "^5.0.0",
-    "@types/node": "^22.13.5",
-    "autocannon": "^7.15.0",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.7.3"
+    "start": "node ../../scripts/lab.mjs up 06",
+    "build": "cd ../.. && npm run build",
+    "test": "node ../../scripts/lab.mjs test 06",
+    "benchmark": "node ../../scripts/lab.mjs benchmark 06",
+    "docker:up": "node ../../scripts/lab.mjs up 06",
+    "docker:down": "node ../../scripts/lab.mjs down 06"
   }
 }

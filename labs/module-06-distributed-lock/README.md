@@ -1,69 +1,42 @@
-# 🧪 THỰC HÀNH LAB 06: DISTRIBUTED LOCK & CHỐNG BÁN ÂM KHO (OVERSELLING)
+# Lab 06: Distributed lock và fencing
 
-> **Mục tiêu thực hành**:
-> 1. Trực tiếp tái hiện lỗi tương tranh kinh điển trong thương mại điện tử: **Bán âm hàng tồn kho (Overselling / Double Spending)** khi nhiều khách hàng cùng tranh mua số lượng hàng có hạn.
-> 2. Kiểm chứng giải pháp **Distributed Lock (Khóa phân tán chuẩn Redis)**:
->    * Acquire nguyên tử: `SET NX PX`.
->    * Release an toàn bằng **Lua Script**: Chống xóa nhầm lock của tiến trình khác khi bị trễ mạng/GC pause.
->    * Fencing Token: Mã số tự tăng bảo vệ tầng cơ sở dữ liệu.
-> 3. Chứng minh: Kho có đúng 5 sản phẩm $\rightarrow$ Chỉ đúng 5 đơn thành công, các khách hàng còn lại nhận thông báo Hết Hàng, kho về 0 không bao giờ bị âm!
+## Mục tiêu và hạ tầng
 
----
+Redis, PostgreSQL, 2 app node. Mọi dữ liệu nghiệp vụ trong đường chạy chính đều dùng dịch vụ thật. Runtime dùng chung nằm trong `runtime/src` tại root; schema và image trong `infra`. Các ví dụ v1 ở `examples/legacy-simulation` chỉ để tham khảo, không tham gia lệnh chạy chính.
 
-## 🛠️ Cài đặt & Khởi động Server
+## Chạy từ root repository
 
-1. Mở terminal, di chuyển vào thư mục lab và cài đặt dependencies:
-   ```bash
-   cd labs/module-06-distributed-lock
-   npm install
-   npm run build
-   ```
-
-2. Khởi động server:
-   ```bash
-   npm run start
-   ```
-   * Server lắng nghe tại: `http://localhost:3000`
-   * Xem tình trạng kho hàng & số liệu Lock: `http://localhost:3000/api/inventory`
-
----
-
-## 🔬 2 Bài Thí nghiệm Thực chiến
-
-### Thí nghiệm 1: Chạy Script Đo kiểm Tự động (Benchmark)
-
-Mở terminal thứ hai và chạy:
 ```bash
-npm run test:overselling
+npm ci
+npm run lab:up -- 06
+npm run lab:test -- 06
+npm run lab:benchmark -- 06
+npm run lab:down -- 06
 ```
 
-* **Kịch bản kiểm thử**:
-  1. Kho khởi tạo có **ĐÚNG 5 SẢN PHẨM**.
-  2. Bắn 20 kết nối đồng thời trong 2 giây vào kịch bản **Unsafe Buy** (không khóa).
-  3. Bắn 20 kết nối đồng thời trong 2 giây vào kịch bản **Locked Buy** (có Distributed Lock).
-* **Kết quả quan sát**:
-  * **Kịch bản Unsafe Buy**: Bán được **hơn 20 đơn hàng** trong khi kho chỉ có 5 cái! Tồn kho bị âm nghiêm trọng (`currentStock < 0`).
-  * **Kịch bản Locked Buy**: Đạt độ chính xác tuyệt đối **ĐÚNG 5 ĐƠN HÀNG** được tạo, 0 lần vi phạm bán âm, tồn kho dừng lại ở mức **0**!
+Gateway: http://localhost:8080. App node: http://localhost:3001 và :3002 (lab 01 thêm :3003). PostgreSQL: localhost:55432, database `lab`, user `postgres`, password `lab_password`. Chạy một lab tại một thời điểm vì các cổng host dùng chung. `down` giữ dữ liệu; `npm run lab:reset -- 06` **xóa volume và dữ liệu của lab** trước khi nạp fixture.
 
----
+## API và thí nghiệm
 
-### Thí nghiệm 2: Thử nghiệm thủ công bằng cURL
+POST /api/lock/acquire; POST /api/lock/release {"token":"..."}; POST /api/inventory/deduct {"token":"...","fence":"..."}; POST /api/inventory/unsafe
 
-1. **Xem trạng thái kho hàng ban đầu**:
-   ```bash
-   curl http://localhost:3000/api/inventory
-   ```
-   * `"currentStock": 5`, `"totalOrdersCreated": 0`.
+Lease 500ms, token ownership và fencing sequence lưu PostgreSQL. Token cũ không được xóa lock mới; DB từ chối fence cũ sau khi fence mới đã áp dụng. Unsafe minh họa lost update cục bộ.
 
-2. **Thực hiện mua 1 đơn hàng an toàn với Distributed Lock**:
-   ```bash
-   curl -X POST http://localhost:3000/api/buy/locked \
-     -H "Content-Type: application/json" \
-     -d '{"userId": "alice_01"}'
-   ```
-   * Nhận phản hồi thành công kèm `fencingToken` và số lượng tồn kho còn lại là `4`.
+Integration test kiểm tra bằng assertion, truy vấn PostgreSQL và broker trực tiếp; test có lỗi trả exit code khác 0. Test cần môi trường sạch, có thể dừng/restart container và thay đổi fixture. Chạy reset trước khi chạy test lại sau một bài thực hành.
 
-3. **Reset kho hàng về 5 chiếc**:
-   ```bash
-   curl -X POST http://localhost:3000/api/inventory/reset
-   ```
+## Quan sát và phục hồi
+
+```bash
+node scripts/lab.mjs compose 06 logs --tail 30 app-1
+node scripts/lab.mjs compose 06 stop app-1
+node scripts/lab.mjs compose 06 start app-1
+node scripts/lab.mjs compose 06 exec -T postgres psql -U postgres -d lab
+```
+
+`/health/live` kiểm tra tiến trình; `/health/ready` kiểm tra dependency phục vụ API; `/metrics` xuất Prometheus; response có `X-Request-ID` và `X-Instance-ID`. Header định danh trong bài học là fixture, chưa phải xác thực production. Benchmark xuất JSON trong `reports/`, tách khỏi kiểm thử đúng/sai.
+
+## Tự đánh giá
+
+Vì sao kiểm tra lease trước DB write vẫn có TOCTOU? Fencing không thay thế transaction hay unique constraints như thế nào?
+
+Viết nhận xét với số liệu thực trên máy của bạn, chỉ rõ giả định và failure window. Xem tài liệu chuyên đề trong `docs/` và [giới hạn vận hành](../../docs/lab-operations.md).
