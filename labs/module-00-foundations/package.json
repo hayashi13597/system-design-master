@@ -1,0 +1,13 @@
+{
+  "name": "sdm-lab-00",
+  "version": "2.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node ../../scripts/lab.mjs up 00",
+    "build": "cd ../.. && npm run build",
+    "test": "node ../../scripts/lab.mjs test 00",
+    "benchmark": "node ../../scripts/lab.mjs benchmark 00",
+    "docker:up": "node ../../scripts/lab.mjs up 00",
+    "docker:down": "node ../../scripts/lab.mjs down 00"
+  }
+}
