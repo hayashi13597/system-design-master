@@ -1,75 +1,42 @@
-# 🧪 THỰC HÀNH LAB 02: CACHING DEEP-DIVE & DEFENSE
+# Lab 02: Caching và stampede
 
-> **Mục tiêu thực hành**:
-> 1. Trực tiếp so sánh hiệu năng giữa **Không có Cache** vs **Có Cache**.
-> 2. Tái hiện hiện tượng **Cache Stampede / Thundering Herd** (khi Hot Key hết hạn, hàng chục request cùng ùa vào đánh nghẽn Database Connection Pool).
-> 3. Kiểm chứng sức mạnh của **Singleflight Pattern**: Gom nhóm hàng ngàn request đồng thời thành DUY NHẤT 1 query vào Database.
-> 4. Kiểm chứng kỹ thuật **Null Object Caching** chống sự cố **Cache Penetration**.
+## Mục tiêu và hạ tầng
 
----
+2 app node, Redis, PostgreSQL. Mọi dữ liệu nghiệp vụ trong đường chạy chính đều dùng dịch vụ thật. Runtime dùng chung nằm trong `runtime/src` tại root; schema và image trong `infra`. Các ví dụ v1 ở `examples/legacy-simulation` chỉ để tham khảo, không tham gia lệnh chạy chính.
 
-## 🛠️ Cài đặt & Khởi động Server
+## Chạy từ root repository
 
-1. Mở terminal, di chuyển vào thư mục lab và cài đặt dependencies:
-   ```bash
-   cd labs/module-02-caching-patterns
-   npm install
-   ```
-
-2. Khởi động server:
-   ```bash
-   npm run start
-   ```
-   * Server lắng nghe tại: `http://localhost:3000`
-   * Kiểm tra thông số thời gian thực: `http://localhost:3000/api/status`
-
----
-
-## 🔬 4 Kịch bản Đo kiểm Thực tế
-
-Mở một terminal thứ hai để chạy các lệnh benchmark:
-
-### Kịch bản 1: Không sử dụng Cache (Direct to Database)
 ```bash
-npm run benchmark:no-cache
+npm ci
+npm run lab:up -- 02
+npm run lab:test -- 02
+npm run lab:benchmark -- 02
+npm run lab:down -- 02
 ```
-* **Hiện tượng quan sát**: 
-  * 100% request đâm thẳng vào Database (`totalQueriesExecuted` tăng vọt bằng đúng số lượng request).
-  * Đỉnh kết nối DB (`peakConnections`) chạm trần `8/8` (hết pool, các request bắt đầu bị nghẽn và phải xếp hàng).
-  * Độ trễ trung bình bị kéo dài lên tới `60 - 150 ms`.
 
----
+Gateway: http://localhost:8080. App node: http://localhost:3001 và :3002 (lab 01 thêm :3003). PostgreSQL: localhost:55432, database `lab`, user `postgres`, password `lab_password`. Chạy một lab tại một thời điểm vì các cổng host dùng chung. `down` giữ dữ liệu; `npm run lab:reset -- 02` **xóa volume và dữ liệu của lab** trước khi nạp fixture.
 
-### Kịch bản 2: Cache-Aside ngây thơ (Bị tổn thương bởi Thundering Herd)
+## API và thí nghiệm
+
+GET /api/products/1?mode=none|naive|singleflight|distributed; PUT /api/products/1; GET /api/cache/stats
+
+Naive gây nhiều query khi cache miss; distributed khóa dùng chung giảm burst cùng key xuống 1 query khi lease còn hiệu lực. Singleflight chỉ gom trong từng tiến trình. Missing product được negative-cache TTL 500ms.
+
+Integration test kiểm tra bằng assertion, truy vấn PostgreSQL và broker trực tiếp; test có lỗi trả exit code khác 0. Test cần môi trường sạch, có thể dừng/restart container và thay đổi fixture. Chạy reset trước khi chạy test lại sau một bài thực hành.
+
+## Quan sát và phục hồi
+
 ```bash
-npm run benchmark:naive
+node scripts/lab.mjs compose 02 logs --tail 30 app-1
+node scripts/lab.mjs compose 02 stop app-1
+node scripts/lab.mjs compose 02 start app-1
+node scripts/lab.mjs compose 02 exec -T postgres psql -U postgres -d lab
 ```
-* **Hiện tượng quan sát**:
-  * Khi cache còn hạn, tốc độ cực nhanh (0.5 ms).
-  * Tuy nhiên, vì thời gian test là 6 giây mà TTL của cache là 2 giây, cache sẽ bị **hết hạn giữa chừng**.
-  * Đúng khoảnh khắc hết hạn, 30 người dùng đồng thời cùng gặp `Cache Miss` và cùng lao vào query DB cùng 1 mili-giây!
-  * Số câu query đâm vào DB tăng vọt theo từng đợt hết hạn.
 
----
+`/health/live` kiểm tra tiến trình; `/health/ready` kiểm tra dependency phục vụ API; `/metrics` xuất Prometheus; response có `X-Request-ID` và `X-Instance-ID`. Header định danh trong bài học là fixture, chưa phải xác thực production. Benchmark xuất JSON trong `reports/`, tách khỏi kiểm thử đúng/sai.
 
-### Kịch bản 3: Phòng thủ triệt để với Singleflight Pattern
-```bash
-npm run benchmark:singleflight
-```
-* **Hiện tượng quan sát**:
-  * Dù 30 kết nối liên tục bắn hàng nghìn request, vào thời điểm cache hết hạn, **Singleflight gom nhóm tất cả lại thành đúng 1 câu query duy nhất vào DB**!
-  * Hãy nhìn vào dòng:
-    * `Số câu query đâm vào DB`: Chỉ khoảng **2 - 3 queries** trong suốt 6 giây (chỉ query đúng 1 lần cho mỗi chu kỳ TTL 2s)!
-    * `Request gom nhóm (Singleflight Suppressed)`: Hàng ngàn cuộc gọi trùng lặp được triệt tiêu hoàn toàn mà không cần chạm vào DB!
-  * Đỉnh kết nối DB luôn an toàn ở mức **1 / 8**. Database hoàn toàn không bị sốc tải!
+## Tự đánh giá
 
----
+TTL lock hết hạn trước query thì điều gì xảy ra? Vì sao delete cache sau DB commit vẫn có race với request đang đọc?
 
-### Kịch bản 4: Phòng thủ Thủng Cache (Cache Penetration với Null Object)
-```bash
-npm run benchmark:penetration
-```
-* **Hiện tượng quan sát**:
-  * Truy vấn sản phẩm ID không tồn tại (`id = 9999`).
-  * Nhờ lưu kết quả rỗng `__NULL_OBJECT__` vào Cache với TTL ngắn, chỉ request đầu tiên chạm vào DB.
-  * Hàng ngàn request tiếp theo nhận kết quả 404 ngay từ Cache, bảo vệ DB không bị quét cạn tài nguyên.
+Viết nhận xét với số liệu thực trên máy của bạn, chỉ rõ giả định và failure window. Xem tài liệu chuyên đề trong `docs/` và [giới hạn vận hành](../../docs/lab-operations.md).
