@@ -1,0 +1,269 @@
+{
+  "name": "sdm-05",
+  "services": {
+    "postgres": {
+      "image": "postgres:16.10-alpine",
+      "environment": {
+        "POSTGRES_USER": "postgres",
+        "POSTGRES_PASSWORD": "lab_password",
+        "POSTGRES_DB": "lab"
+      },
+      "ports": [
+        "127.0.0.1:55432:5432"
+      ],
+      "volumes": [
+        "pgdata:/var/lib/postgresql/data",
+        "../../infra/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "pg_isready -h 127.0.0.1 -U postgres -d lab"
+        ],
+        "interval": "2s",
+        "timeout": "2s",
+        "retries": 30
+      }
+    },
+    "shard1": {
+      "image": "postgres:16.10-alpine",
+      "environment": {
+        "POSTGRES_USER": "postgres",
+        "POSTGRES_PASSWORD": "lab_password",
+        "POSTGRES_DB": "lab"
+      },
+      "volumes": [
+        "shard1data:/var/lib/postgresql/data",
+        "../../infra/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "pg_isready -h 127.0.0.1 -U postgres -d lab"
+        ],
+        "interval": "2s",
+        "timeout": "2s",
+        "retries": 30
+      }
+    },
+    "shard2": {
+      "image": "postgres:16.10-alpine",
+      "environment": {
+        "POSTGRES_USER": "postgres",
+        "POSTGRES_PASSWORD": "lab_password",
+        "POSTGRES_DB": "lab"
+      },
+      "volumes": [
+        "shard2data:/var/lib/postgresql/data",
+        "../../infra/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "pg_isready -h 127.0.0.1 -U postgres -d lab"
+        ],
+        "interval": "2s",
+        "timeout": "2s",
+        "retries": 30
+      }
+    },
+    "shard3": {
+      "image": "postgres:16.10-alpine",
+      "environment": {
+        "POSTGRES_USER": "postgres",
+        "POSTGRES_PASSWORD": "lab_password",
+        "POSTGRES_DB": "lab"
+      },
+      "volumes": [
+        "shard3data:/var/lib/postgresql/data",
+        "../../infra/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "pg_isready -h 127.0.0.1 -U postgres -d lab"
+        ],
+        "interval": "2s",
+        "timeout": "2s",
+        "retries": 30
+      }
+    },
+    "shard4": {
+      "image": "postgres:16.10-alpine",
+      "environment": {
+        "POSTGRES_USER": "postgres",
+        "POSTGRES_PASSWORD": "lab_password",
+        "POSTGRES_DB": "lab"
+      },
+      "volumes": [
+        "shard4data:/var/lib/postgresql/data",
+        "../../infra/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "pg_isready -h 127.0.0.1 -U postgres -d lab"
+        ],
+        "interval": "2s",
+        "timeout": "2s",
+        "retries": 30
+      },
+      "profiles": [
+        "reshard"
+      ]
+    },
+    "app-1": {
+      "build": {
+        "context": "../..",
+        "dockerfile": "infra/Dockerfile"
+      },
+      "image": "system-design-lab:local",
+      "environment": {
+        "LAB": "05",
+        "DB_URL": "postgres://postgres:lab_password@postgres:5432/lab",
+        "REDIS_URL": "redis://redis:6379",
+        "RABBIT_URL": "amqp://lab:lab_password@rabbitmq",
+        "KAFKA_BROKERS": "redpanda:9092",
+        "RESERVATION_TTL_SECONDS": "${RESERVATION_TTL_SECONDS:-600}",
+        "ROLE": "api",
+        "INSTANCE_ID": "api-1",
+        "WORKER_ID": "1"
+      },
+      "depends_on": {
+        "postgres": {
+          "condition": "service_healthy"
+        },
+        "shard1": {
+          "condition": "service_healthy"
+        },
+        "shard2": {
+          "condition": "service_healthy"
+        },
+        "shard3": {
+          "condition": "service_healthy"
+        }
+      },
+      "init": true,
+      "restart": "on-failure",
+      "stop_grace_period": "10s",
+      "ports": [
+        "127.0.0.1:3001:3000"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3000/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+        ],
+        "interval": "3s",
+        "timeout": "4s",
+        "retries": 30
+      }
+    },
+    "app-2": {
+      "build": {
+        "context": "../..",
+        "dockerfile": "infra/Dockerfile"
+      },
+      "image": "system-design-lab:local",
+      "environment": {
+        "LAB": "05",
+        "DB_URL": "postgres://postgres:lab_password@postgres:5432/lab",
+        "REDIS_URL": "redis://redis:6379",
+        "RABBIT_URL": "amqp://lab:lab_password@rabbitmq",
+        "KAFKA_BROKERS": "redpanda:9092",
+        "RESERVATION_TTL_SECONDS": "${RESERVATION_TTL_SECONDS:-600}",
+        "ROLE": "api",
+        "INSTANCE_ID": "api-2",
+        "WORKER_ID": "2"
+      },
+      "depends_on": {
+        "postgres": {
+          "condition": "service_healthy"
+        },
+        "shard1": {
+          "condition": "service_healthy"
+        },
+        "shard2": {
+          "condition": "service_healthy"
+        },
+        "shard3": {
+          "condition": "service_healthy"
+        }
+      },
+      "init": true,
+      "restart": "on-failure",
+      "stop_grace_period": "10s",
+      "ports": [
+        "127.0.0.1:3002:3000"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3000/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+        ],
+        "interval": "3s",
+        "timeout": "4s",
+        "retries": 30
+      }
+    },
+    "nginx": {
+      "image": "nginx:1.28.0-alpine",
+      "ports": [
+        "127.0.0.1:8080:8080"
+      ],
+      "volumes": [
+        "./nginx.conf:/etc/nginx/nginx.conf:ro"
+      ],
+      "depends_on": {
+        "app-1": {
+          "condition": "service_healthy"
+        },
+        "app-2": {
+          "condition": "service_healthy"
+        }
+      }
+    },
+    "prometheus": {
+      "image": "prom/prometheus:v3.5.0",
+      "profiles": [
+        "observability"
+      ],
+      "ports": [
+        "127.0.0.1:9090:9090"
+      ],
+      "volumes": [
+        "../../infra/prometheus.yml:/etc/prometheus/prometheus.yml:ro",
+        "promdata:/prometheus"
+      ]
+    },
+    "grafana": {
+      "image": "grafana/grafana:12.1.1",
+      "profiles": [
+        "observability"
+      ],
+      "ports": [
+        "127.0.0.1:3005:3000"
+      ],
+      "environment": {
+        "GF_SECURITY_ADMIN_PASSWORD": "lab_password"
+      },
+      "volumes": [
+        "grafanadata:/var/lib/grafana",
+        "../../infra/grafana:/etc/grafana/provisioning:ro"
+      ]
+    }
+  },
+  "volumes": {
+    "pgdata": {},
+    "shard1data": {},
+    "shard2data": {},
+    "shard3data": {},
+    "shard4data": {},
+    "promdata": {},
+    "grafanadata": {}
+  }
+}

@@ -1,21 +1,13 @@
 {
-  "name": "lab-05-db-sharding",
-  "version": "1.0.0",
-  "description": "Module 05: Database Partitioning, Consistent Hashing & Snowflake ID",
-  "main": "dist/server.js",
+  "name": "sdm-lab-05",
+  "version": "2.0.0",
+  "private": true,
   "scripts": {
-    "build": "tsc",
-    "start": "ts-node src/server.ts",
-    "start:prod": "node dist/server.js",
-    "test:sharding": "node benchmark-sharding.js"
-  },
-  "dependencies": {
-    "express": "^4.21.2"
-  },
-  "devDependencies": {
-    "@types/express": "^5.0.0",
-    "@types/node": "^22.13.5",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.7.3"
+    "start": "node ../../scripts/lab.mjs up 05",
+    "build": "cd ../.. && npm run build",
+    "test": "node ../../scripts/lab.mjs test 05",
+    "benchmark": "node ../../scripts/lab.mjs benchmark 05",
+    "docker:up": "node ../../scripts/lab.mjs up 05",
+    "docker:down": "node ../../scripts/lab.mjs down 05"
   }
 }

@@ -1,91 +1,42 @@
-# 🧪 THỰC HÀNH LAB 05: SHARDING, CONSISTENT HASHING & SNOWFLAKE ID
+# Lab 05: Sharding và resharding
 
-> **Mục tiêu thực hành**:
-> 1. Trực tiếp kiểm chứng hiệu năng và cơ chế sinh mã của **Twitter Snowflake ID** (64-bit BigInt): Đảm bảo tính duy nhất phân tán và sắp xếp tự nhiên theo thời gian (Time-Sortable).
-> 2. Đo đạc sự chênh lệch to lớn giữa **Modulo Hashing** vs **Consistent Hashing**: Thấy rõ tại sao Modulo làm xáo trộn $75\%$ dữ liệu khi scale từ 3 lên 4 shards, trong khi Consistent Hashing chỉ di chuyển đúng $\sim 25\%$.
-> 3. Trải nghiệm 2 cơ chế định tuyến phân tán:
->    * **Point Query ($O(1)$)**: Dùng Shard Key định tuyến thẳng vào đúng 1 Shard duy nhất.
->    * **Scatter-Gather**: Bắn truy vấn song song tới tất cả các Shards và gom nhóm kết quả khi không có Shard Key.
+## Mục tiêu và hạ tầng
 
----
+Coordinator PostgreSQL + 3 shard PostgreSQL; shard4 bật profile reshard. Mọi dữ liệu nghiệp vụ trong đường chạy chính đều dùng dịch vụ thật. Runtime dùng chung nằm trong `runtime/src` tại root; schema và image trong `infra`. Các ví dụ v1 ở `examples/legacy-simulation` chỉ để tham khảo, không tham gia lệnh chạy chính.
 
-## 🛠️ Cài đặt & Khởi động Server
+## Chạy từ root repository
 
-1. Mở terminal, di chuyển vào thư mục lab và cài đặt dependencies:
-   ```bash
-   cd labs/module-05-db-sharding
-   npm install
-   npm run build
-   ```
-
-2. Khởi động server:
-   ```bash
-   npm run start
-   ```
-   * Server lắng nghe tại: `http://localhost:3000`
-   * Xem phân bổ Shard: `http://localhost:3000/api/cluster/distribution`
-
----
-
-## 🔬 2 Bài Thí nghiệm Thực chiến
-
-### Thí nghiệm 1: Chạy Script Đo kiểm Tự động (Benchmark)
-
-Mở terminal thứ hai và chạy:
 ```bash
-npm run test:sharding
+npm ci
+npm run lab:up -- 05
+npm run lab:test -- 05
+npm run lab:benchmark -- 05
+npm run lab:down -- 05
 ```
 
-* **Phần 1: Kiểm thử Snowflake ID**:
-  * Sinh **10,000 IDs** liên tiếp trong vài mili-giây.
-  * Kiểm tra tính duy nhất ($100\%$ Unique) và kiểm tra tính sắp xếp tăng dần theo thời gian (Time-sortable).
-* **Phần 2: Thảm họa Re-sharding (Modulo vs Consistent Hashing)**:
-  * So sánh tỷ lệ dữ liệu bị đổi node khi bổ sung thêm Shard thứ 4 vào cụm:
-    * Modulo Hashing: **$\sim 75\%$** số bản ghi bị văng sang node khác!
-    * Consistent Hashing: Chỉ đúng **$\sim 25\%$** số bản ghi phải di chuyển!
+Gateway: http://localhost:8080. App node: http://localhost:3001 và :3002 (lab 01 thêm :3003). PostgreSQL: localhost:55432, database `lab`, user `postgres`, password `lab_password`. Chạy một lab tại một thời điểm vì các cổng host dùng chung. `down` giữ dữ liệu; `npm run lab:reset -- 05` **xóa volume và dữ liệu của lab** trước khi nạp fixture.
 
----
+## API và thí nghiệm
 
-### Thí nghiệm 2: Kiểm thử Cụm Sharding Thực tế với cURL
+POST /api/users {"name":"A","email":"a@example.test"}; GET /api/users/:id; GET /api/users
 
-1. **Nạp thử 300 Users vào Cụm**:
-   ```bash
-   curl -X POST http://localhost:3000/api/cluster/seed \
-     -H "Content-Type: application/json" \
-     -d '{"count": 300}'
-   ```
+Tạo 100 user qua hai node; chạy node scripts/lab.mjs reshard 05 từ root; đọc lại đủ 100 user theo routing version mới. Reshard dừng thao tác đọc/ghi trong lúc copy và verify.
 
-2. **Xem dữ liệu được phân bổ đồng đều giữa 3 Shards**:
-   ```bash
-   curl http://localhost:3000/api/cluster/distribution
-   ```
-   Bạn sẽ thấy dữ liệu được băm rải đều xấp xỉ $\sim 33\%$ cho mỗi Shard nhờ các Virtual Nodes!
+Integration test kiểm tra bằng assertion, truy vấn PostgreSQL và broker trực tiếp; test có lỗi trả exit code khác 0. Test cần môi trường sạch, có thể dừng/restart container và thay đổi fixture. Chạy reset trước khi chạy test lại sau một bài thực hành.
 
-3. **Tạo 1 User cụ thể và xem giải mã Snowflake ID**:
-   ```bash
-   curl -X POST http://localhost:3000/api/users \
-     -H "Content-Type: application/json" \
-     -d '{"name": "Tran Van B", "email": "b@architect.io"}'
-   ```
-   * Quan sát ID trả về là một số 64-bit (ví dụ: `1982736481726354`), kèm metadata giải mã rõ `timestamp`, `workerId`, `sequence`.
+## Quan sát và phục hồi
 
-4. **Đọc theo ID (Point Query - $O(1)$ chỉ chạm vào 1 Shard duy nhất)**:
-   ```bash
-   # Thay <ID_CUA_USER> bằng ID vừa sinh ở trên:
-   curl http://localhost:3000/api/users/<ID_CUA_USER>
-   ```
-   * Trả về kết quả từ đúng Shard chứa user đó (`"routingType": "POINT_QUERY_SINGLE_SHARD"`).
+```bash
+node scripts/lab.mjs compose 05 logs --tail 30 app-1
+node scripts/lab.mjs compose 05 stop app-1
+node scripts/lab.mjs compose 05 start app-1
+node scripts/lab.mjs compose 05 exec -T postgres psql -U postgres -d lab
+```
 
-5. **Đọc không có ID (Scatter-Gather Pattern)**:
-   ```bash
-   curl http://localhost:3000/api/users
-   ```
-   * Hệ thống sẽ phát truy vấn song song tới tất cả các Shards và gom toàn bộ 301 users lại.
+`/health/live` kiểm tra tiến trình; `/health/ready` kiểm tra dependency phục vụ API; `/metrics` xuất Prometheus; response có `X-Request-ID` và `X-Instance-ID`. Header định danh trong bài học là fixture, chưa phải xác thực production. Benchmark xuất JSON trong `reports/`, tách khỏi kiểm thử đúng/sai.
 
-6. **Bổ sung Shard thứ 4 vào cụm (Dynamic Resharding)**:
-   ```bash
-   curl -X POST http://localhost:3000/api/cluster/add-shard \
-     -H "Content-Type: application/json" \
-     -d '{"shardName": "shard-04"}'
-   ```
-   * Cụm lập tức mở rộng lên 4 shards mà không làm gián đoạn hệ thống.
+## Tự đánh giá
+
+Consistent hashing chỉ đổi routing, ai di chuyển dữ liệu? Offline reshard khác online dual-write thế nào?
+
+Viết nhận xét với số liệu thực trên máy của bạn, chỉ rõ giả định và failure window. Xem tài liệu chuyên đề trong `docs/` và [giới hạn vận hành](../../docs/lab-operations.md).
