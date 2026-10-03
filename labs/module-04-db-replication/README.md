@@ -1,78 +1,42 @@
-# 🧪 THỰC HÀNH LAB 04: DATABASE REPLICATION & READ/WRITE SPLITTING
+# Lab 04: PostgreSQL streaming replication
 
-> **Mục tiêu thực hành**:
-> 1. Trực tiếp quan sát và tái hiện sự cố **Replication Lag**: Người dùng vừa cập nhật dữ liệu ở Primary, nhưng đọc ngay lập tức từ Replica thì bị trả về dữ liệu cũ (Stale Read).
-> 2. Kiểm chứng giải pháp **Smart Database Router** với cơ chế **Read-Your-Own-Writes Consistency (Time-based Pinning & LSN Tracking)**.
-> 3. Hiểu rõ quy tắc bắt buộc: Mọi câu truy vấn nằm trong **Transaction** phải được ghim vào Primary Database.
+## Mục tiêu và hạ tầng
 
----
+PostgreSQL primary + 2 physical streaming replicas, 2 app node. Mọi dữ liệu nghiệp vụ trong đường chạy chính đều dùng dịch vụ thật. Runtime dùng chung nằm trong `runtime/src` tại root; schema và image trong `infra`. Các ví dụ v1 ở `examples/legacy-simulation` chỉ để tham khảo, không tham gia lệnh chạy chính.
 
-## 🛠️ Cài đặt & Khởi động Server
+## Chạy từ root repository
 
-1. Mở terminal, di chuyển vào thư mục lab và cài đặt dependencies:
-   ```bash
-   cd labs/module-04-db-replication
-   npm install
-   ```
-
-2. Khởi động server:
-   ```bash
-   npm run start
-   ```
-   * Server lắng nghe tại: `http://localhost:3000`
-   * Kiểm tra thông số Cluster & Replication Lag: `http://localhost:3000/api/cluster/status`
-
----
-
-## 🔬 2 Thí nghiệm Kiến trúc Trực quan
-
-### Thí nghiệm 1: Chạy Script Đo kiểm Tự động (Benchmark)
-
-Mở một terminal thứ hai và chạy:
 ```bash
-npm run test:replication
+npm ci
+npm run lab:up -- 04
+npm run lab:test -- 04
+npm run lab:benchmark -- 04
+npm run lab:down -- 04
 ```
-* **Kịch bản kiểm thử**: Script sẽ thực hiện 30 chu kỳ liên tiếp:
-  1. Gửi request `POST` cập nhật Bio lên Primary.
-  2. Gửi request `GET` đọc lại ngay lập tức (0ms delay).
-* **Kết quả quan sát**:
-  * **Naive Router**: Tỷ lệ đọc phải dữ liệu cũ (Stale Data) lên tới **$50\%$** vì một nửa số request đọc bị điều hướng vào Replica-2 đang bị lag 400ms!
-  * **Consistent Router**: Tỷ lệ Stale Data là **$0\%$** nhờ cơ chế Time-based Pinning tự động ghim request đọc của người vừa ghi vào Primary trong 1 giây!
 
----
+Gateway: http://localhost:8080. App node: http://localhost:3001 và :3002 (lab 01 thêm :3003). PostgreSQL: localhost:55432, database `lab`, user `postgres`, password `lab_password`. Chạy một lab tại một thời điểm vì các cổng host dùng chung. `down` giữ dữ liệu; `npm run lab:reset -- 04` **xóa volume và dữ liệu của lab** trước khi nạp fixture.
 
-### Thí nghiệm 2: Kiểm chứng thủ công bằng cURL
+## API và thí nghiệm
 
-1. **Xem trạng thái cụm Database**:
-   ```bash
-   curl http://localhost:3000/api/cluster/status
-   ```
-   Bạn sẽ thấy: Primary đang ở `LSN = 100`, Replica-1 (lag 50ms), Replica-2 (lag 400ms).
+POST /api/profiles/user_1 {"bio":"new"}; GET /api/profiles/user_1 — header X-Min-LSN tùy chọn
 
-2. **Cập nhật Bio mới cho User**:
-   ```bash
-   curl -X POST http://localhost:3000/api/users/user_1/bio \
-     -H "Content-Type: application/json" \
-     -d '{"bio":"Avatar và Bio vừa đổi lúc 10h!"}'
-   ```
-   * Primary tăng LSN lên `101`, trả về `newVersion = 2`.
+Pause WAL replay trên replica, ghi primary, đọc replica thấy cũ. Gửi LSN sau commit qua node bất kỳ sẽ fallback primary cho tới khi replica bắt kịp.
 
-3. **Thử đọc bằng Naive Router (ngay lập tức)**:
-   ```bash
-   curl "http://localhost:3000/api/naive/users/user_1/bio?expectedVersion=2"
-   ```
-   * Nếu request rơi vào Replica-2 (đang lag 400ms), bạn sẽ thấy:
-     `"isStale": true`, `"bio": "Bio ban đầu..."` $\rightarrow$ **Người dùng F5 thấy dữ liệu cũ!**
+Integration test kiểm tra bằng assertion, truy vấn PostgreSQL và broker trực tiếp; test có lỗi trả exit code khác 0. Test cần môi trường sạch, có thể dừng/restart container và thay đổi fixture. Chạy reset trước khi chạy test lại sau một bài thực hành.
 
-4. **Thử đọc bằng Consistent Router**:
-   ```bash
-   curl "http://localhost:3000/api/consistent/users/user_1/bio?expectedVersion=2"
-   ```
-   * Phản hồi trả về:
-     `"servedBy": "PRIMARY (Routed via Read-Your-Own-Writes Pinning)"`, `"isStale": false` $\rightarrow$ **Dữ liệu luôn tươi mới 100%!**
+## Quan sát và phục hồi
 
-5. **Kiểm tra Transaction Context**:
-   ```bash
-   curl -X POST http://localhost:3000/api/orders/checkout
-   ```
-   * Đảm bảo toàn bộ các thao tác trong chuỗi thanh toán đều được thực thi trên Primary.
+```bash
+node scripts/lab.mjs compose 04 logs --tail 30 app-1
+node scripts/lab.mjs compose 04 stop app-1
+node scripts/lab.mjs compose 04 start app-1
+node scripts/lab.mjs compose 04 exec -T postgres psql -U postgres -d lab
+```
+
+`/health/live` kiểm tra tiến trình; `/health/ready` kiểm tra dependency phục vụ API; `/metrics` xuất Prometheus; response có `X-Request-ID` và `X-Instance-ID`. Header định danh trong bài học là fixture, chưa phải xác thực production. Benchmark xuất JSON trong `reports/`, tách khỏi kiểm thử đúng/sai.
+
+## Tự đánh giá
+
+Vì sao pinning 1 giây chỉ là heuristic? Nếu replica lỗi khi đọc thông thường thì nên trả lỗi hay fallback và với chi phí nào?
+
+Viết nhận xét với số liệu thực trên máy của bạn, chỉ rõ giả định và failure window. Xem tài liệu chuyên đề trong `docs/` và [giới hạn vận hành](../../docs/lab-operations.md).

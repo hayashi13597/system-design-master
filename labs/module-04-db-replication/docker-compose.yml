@@ -1,53 +1,245 @@
-version: '3.8'
-
-services:
-  # 1. PostgreSQL Primary (Master - Read & Write)
-  postgres-primary:
-    image: postgres:16-alpine
-    container_name: postgres-primary
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: rootpassword
-      POSTGRES_DB: app_db
-    ports:
-      - "5432:5432"
-    command: |
-      postgres 
-      -c wal_level=replica 
-      -c max_wal_senders=10 
-      -c max_replication_slots=10 
-      -c hot_standby=on
-    networks:
-      - db-network
-
-  # 2. PostgreSQL Replica 1 (Read-Only)
-  postgres-replica-1:
-    image: postgres:16-alpine
-    container_name: postgres-replica-1
-    environment:
-      PGUSER: postgres
-      PGPASSWORD: rootpassword
-    ports:
-      - "5433:5432"
-    depends_on:
-      - postgres-primary
-    networks:
-      - db-network
-
-  # 3. PostgreSQL Replica 2 (Read-Only)
-  postgres-replica-2:
-    image: postgres:16-alpine
-    container_name: postgres-replica-2
-    environment:
-      PGUSER: postgres
-      PGPASSWORD: rootpassword
-    ports:
-      - "5434:5432"
-    depends_on:
-      - postgres-primary
-    networks:
-      - db-network
-
-networks:
-  db-network:
-    driver: bridge
+{
+  "name": "sdm-04",
+  "services": {
+    "postgres": {
+      "image": "postgres:16.10-alpine",
+      "environment": {
+        "POSTGRES_USER": "postgres",
+        "POSTGRES_PASSWORD": "lab_password",
+        "POSTGRES_DB": "lab"
+      },
+      "ports": [
+        "127.0.0.1:55432:5432"
+      ],
+      "volumes": [
+        "pgdata:/var/lib/postgresql/data",
+        "../../infra/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro",
+        "../../infra/replication.sql:/docker-entrypoint-initdb.d/02-replication.sql:ro",
+        "../../infra/primary.sh:/docker-entrypoint-initdb.d/03-primary.sh:ro"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "pg_isready -h 127.0.0.1 -U postgres -d lab"
+        ],
+        "interval": "2s",
+        "timeout": "2s",
+        "retries": 30
+      },
+      "command": [
+        "postgres",
+        "-c",
+        "wal_level=replica",
+        "-c",
+        "max_wal_senders=10",
+        "-c",
+        "max_replication_slots=10",
+        "-c",
+        "wal_keep_size=128MB"
+      ]
+    },
+    "replica1": {
+      "image": "postgres:16.10-alpine",
+      "entrypoint": [
+        "sh",
+        "/replica.sh"
+      ],
+      "environment": {
+        "POSTGRES_PASSWORD": "replication_lab",
+        "PGDATA": "/var/lib/postgresql/data/replica"
+      },
+      "volumes": [
+        "replica1data:/var/lib/postgresql/data",
+        "../../infra/replica.sh:/replica.sh:ro"
+      ],
+      "depends_on": {
+        "postgres": {
+          "condition": "service_healthy"
+        }
+      },
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "pg_isready -h 127.0.0.1 -U postgres -d lab"
+        ],
+        "interval": "2s",
+        "timeout": "2s",
+        "retries": 40
+      }
+    },
+    "replica2": {
+      "image": "postgres:16.10-alpine",
+      "entrypoint": [
+        "sh",
+        "/replica.sh"
+      ],
+      "environment": {
+        "POSTGRES_PASSWORD": "replication_lab",
+        "PGDATA": "/var/lib/postgresql/data/replica"
+      },
+      "volumes": [
+        "replica2data:/var/lib/postgresql/data",
+        "../../infra/replica.sh:/replica.sh:ro"
+      ],
+      "depends_on": {
+        "postgres": {
+          "condition": "service_healthy"
+        }
+      },
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "pg_isready -h 127.0.0.1 -U postgres -d lab"
+        ],
+        "interval": "2s",
+        "timeout": "2s",
+        "retries": 40
+      }
+    },
+    "app-1": {
+      "build": {
+        "context": "../..",
+        "dockerfile": "infra/Dockerfile"
+      },
+      "image": "system-design-lab:local",
+      "environment": {
+        "LAB": "04",
+        "DB_URL": "postgres://postgres:lab_password@postgres:5432/lab",
+        "REDIS_URL": "redis://redis:6379",
+        "RABBIT_URL": "amqp://lab:lab_password@rabbitmq",
+        "KAFKA_BROKERS": "redpanda:9092",
+        "RESERVATION_TTL_SECONDS": "${RESERVATION_TTL_SECONDS:-600}",
+        "ROLE": "api",
+        "INSTANCE_ID": "api-1",
+        "WORKER_ID": "1"
+      },
+      "depends_on": {
+        "postgres": {
+          "condition": "service_healthy"
+        },
+        "replica1": {
+          "condition": "service_healthy"
+        },
+        "replica2": {
+          "condition": "service_healthy"
+        }
+      },
+      "init": true,
+      "restart": "on-failure",
+      "stop_grace_period": "10s",
+      "ports": [
+        "127.0.0.1:3001:3000"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3000/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+        ],
+        "interval": "3s",
+        "timeout": "4s",
+        "retries": 30
+      }
+    },
+    "app-2": {
+      "build": {
+        "context": "../..",
+        "dockerfile": "infra/Dockerfile"
+      },
+      "image": "system-design-lab:local",
+      "environment": {
+        "LAB": "04",
+        "DB_URL": "postgres://postgres:lab_password@postgres:5432/lab",
+        "REDIS_URL": "redis://redis:6379",
+        "RABBIT_URL": "amqp://lab:lab_password@rabbitmq",
+        "KAFKA_BROKERS": "redpanda:9092",
+        "RESERVATION_TTL_SECONDS": "${RESERVATION_TTL_SECONDS:-600}",
+        "ROLE": "api",
+        "INSTANCE_ID": "api-2",
+        "WORKER_ID": "2"
+      },
+      "depends_on": {
+        "postgres": {
+          "condition": "service_healthy"
+        },
+        "replica1": {
+          "condition": "service_healthy"
+        },
+        "replica2": {
+          "condition": "service_healthy"
+        }
+      },
+      "init": true,
+      "restart": "on-failure",
+      "stop_grace_period": "10s",
+      "ports": [
+        "127.0.0.1:3002:3000"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3000/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+        ],
+        "interval": "3s",
+        "timeout": "4s",
+        "retries": 30
+      }
+    },
+    "nginx": {
+      "image": "nginx:1.28.0-alpine",
+      "ports": [
+        "127.0.0.1:8080:8080"
+      ],
+      "volumes": [
+        "./nginx.conf:/etc/nginx/nginx.conf:ro"
+      ],
+      "depends_on": {
+        "app-1": {
+          "condition": "service_healthy"
+        },
+        "app-2": {
+          "condition": "service_healthy"
+        }
+      }
+    },
+    "prometheus": {
+      "image": "prom/prometheus:v3.5.0",
+      "profiles": [
+        "observability"
+      ],
+      "ports": [
+        "127.0.0.1:9090:9090"
+      ],
+      "volumes": [
+        "../../infra/prometheus.yml:/etc/prometheus/prometheus.yml:ro",
+        "promdata:/prometheus"
+      ]
+    },
+    "grafana": {
+      "image": "grafana/grafana:12.1.1",
+      "profiles": [
+        "observability"
+      ],
+      "ports": [
+        "127.0.0.1:3005:3000"
+      ],
+      "environment": {
+        "GF_SECURITY_ADMIN_PASSWORD": "lab_password"
+      },
+      "volumes": [
+        "grafanadata:/var/lib/grafana",
+        "../../infra/grafana:/etc/grafana/provisioning:ro"
+      ]
+    }
+  },
+  "volumes": {
+    "pgdata": {},
+    "replica1data": {},
+    "replica2data": {},
+    "promdata": {},
+    "grafanadata": {}
+  }
+}
