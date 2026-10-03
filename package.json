@@ -1,22 +1,35 @@
 {
   "name": "system-design-master",
-  "version": "1.0.0",
-  "description": "System Design Master: Comprehensive theory and practical hands-on labs with Node.js/TypeScript & Docker",
+  "version": "2.0.0",
   "private": true,
   "scripts": {
-    "lab1:install": "cd labs/module-01-load-balancing && npm install",
-    "lab1:start": "cd labs/module-01-load-balancing && npm run start:cluster",
-    "lab1:test": "cd labs/module-01-load-balancing && npm run benchmark"
+    "build": "tsc -p runtime/tsconfig.json",
+    "start": "tsx runtime/src/server.ts",
+    "lab:up": "node scripts/lab.mjs up",
+    "lab:down": "node scripts/lab.mjs down",
+    "lab:test": "node scripts/lab.mjs test",
+    "lab:benchmark": "node scripts/lab.mjs benchmark",
+    "lab:reset": "node scripts/lab.mjs reset",
+    "test": "tsx --test runtime/test/unit.test.ts",
+    "test:integration": "tsx --test runtime/test/integration.test.ts"
   },
-  "keywords": [
-    "system-design",
-    "distributed-systems",
-    "architecture",
-    "load-balancing",
-    "caching",
-    "rate-limiting",
-    "sharding"
-  ],
-  "author": "",
-  "license": "MIT"
+  "dependencies": {
+    "amqplib": "0.10.9",
+    "express": "4.22.3",
+    "ioredis": "5.8.2",
+    "kafkajs": "2.2.4",
+    "pg": "8.16.3",
+    "prom-client": "15.1.3"
+  },
+  "devDependencies": {
+    "@types/amqplib": "0.10.7",
+    "@types/express": "4.17.23",
+    "@types/node": "22.18.6",
+    "@types/pg": "8.15.5",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "node": ">=22"
+  }
 }
