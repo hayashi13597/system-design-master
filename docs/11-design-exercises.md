@@ -18,6 +18,8 @@ API/capability tối thiểu: WebSocket send/receive với client message ID, re
 
 Thử phản biện: reconnect 10.000 client cùng lúc; slow consumer; message đã lưu nhưng app chết trước ACK; nhiều thiết bị gửi đồng thời. Bài đạt khi ACK boundary gắn với durable store, replay không mất message và không hứa WebSocket memory có durability.
 
+Tham khảo [dự án Chat & Realtime Collaborative Notification](../projects/chat-realtime-notification/) để xem thiết kế chi tiết và ma trận kiểm chứng. Thiết kế này chọn 5.000 message/s liên tục và mở rộng durability tới mất một máy/AZ; các mục tiêu chưa phải kết quả benchmark.
+
 ## 3. File storage
 
 Yêu cầu: upload tối đa 1 GiB/file, 100.000 upload/ngày, average 10 MiB, resumable upload, sharing có expiration, quota 100 GiB/user, retention 1 năm. Bytes lưu object storage; metadata/quota lưu DB. Tính storage thô rồi cộng versioning/replication theo giả định riêng.

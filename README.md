@@ -35,6 +35,10 @@ Gateway: http://localhost:8080. App node: :3001/:3002; lab 01 thêm :3003. Dữ 
 
 Mỗi module: đọc lý thuyết → chạy ví dụ có lỗi chủ đích → đo/giải thích → chạy giải pháp → thực hiện bài tập. Sau module 10, giải [ba bài tập thiết kế](docs/11-design-exercises.md) và tự đánh giá theo rubric. Phần thuật toán có thể đọc trước; chưa cần triển khai microservices ngay từ đầu.
 
+## Dự án thiết kế
+
+[Chat & Realtime Collaborative Notification](projects/chat-realtime-notification/) áp dụng các module vào chat 1–1/nhóm, 100.000 WebSocket, message sharding, ACK/replay và presence TTL. Dự án gồm thiết kế chi tiết và kế hoạch kiểm chứng; chưa có ứng dụng hoặc benchmark riêng.
+
 ## Hạ tầng thật và phạm vi kiểm chứng
 
 Runtime TypeScript tại [runtime/src](runtime/src/), schema/Compose/image tại `infra/` và từng lab. Redis, PostgreSQL, RabbitMQ và Redpanda thực sự tham gia đường dữ liệu. Không có chế độ tự fallback sang Map trong RAM. Code mô phỏng v1 được lưu tại `examples/legacy-simulation` của từng lab, không tham gia đường chạy chính.
